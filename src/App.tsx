@@ -105,6 +105,86 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Client-side parser helpers for when server proxy is unavailable (e.g. GitHub Pages)
+  const parseGoogleNewsRSSClient = (xmlText: string) => {
+    const items: any[] = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xmlText)) !== null) {
+      const itemContent = match[1];
+      const titleMatch = itemContent.match(/<title>([\s\S]*?)<\/title>/);
+      let titleStr = titleMatch ? titleMatch[1] : "Sports Update";
+      const linkMatch = itemContent.match(/<link>([\s\S]*?)<\/link>/);
+      const url = linkMatch ? linkMatch[1] : "";
+      const pubDateMatch = itemContent.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+      const pubDateStr = pubDateMatch ? pubDateMatch[1] : "";
+      let timestamp = Date.now();
+      if (pubDateStr) {
+        try {
+          timestamp = Date.parse(pubDateStr);
+        } catch (e) {
+          // ignore
+        }
+      }
+      const sourceMatch = itemContent.match(/<source[^>]*>([\s\S]*?)<\/source>/);
+      const source = sourceMatch ? sourceMatch[1] : "Sports Portal";
+
+      const cleanTitle = titleStr
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+        .trim();
+
+      items.push({
+        title: cleanTitle,
+        url,
+        timestamp,
+        source: source || "Sports News",
+      });
+    }
+    return items;
+  };
+
+  const isHeadlineMatchClient = (artTitle: string, team: string): boolean => {
+    const titleLower = artTitle.toLowerCase();
+    const teamLower = team.toLowerCase();
+    if (titleLower.includes(teamLower)) return true;
+
+    const commonAndLooseWords = [
+      "the", "and", "team", "club", "sports", "news", "official", "fc", "with", "from", "for",
+      "blue", "red", "white", "black", "green", "gold", "golden", "grey", "gray", "yellow", "orange",
+      "mighty", "city", "bay", "real", "united", "town", "county", "rovers", "wanderers", "albion",
+      "north", "south", "east", "west"
+    ];
+    const signatureWords = teamLower
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !commonAndLooseWords.includes(w));
+
+    for (const word of signatureWords) {
+      if (titleLower.includes(word)) return true;
+    }
+
+    const sportsNicknames: string[] = [];
+    if (teamLower.includes("canadiens") || teamLower.includes("montreal")) {
+      sportsNicknames.push("habs");
+    }
+    if (teamLower.includes("leafs") || teamLower.includes("toronto")) {
+      sportsNicknames.push("leafs");
+    }
+    if (teamLower.includes("jays") || teamLower.includes("toronto")) {
+      sportsNicknames.push("jays");
+    }
+    for (const nick of sportsNicknames) {
+      if (titleLower.includes(nick)) return true;
+    }
+
+    return false;
+  };
+
   // Crawl news from Express proxy
   const fetchNews = async (forceTeams?: string[]) => {
     const targetTeams = forceTeams || settings.teams;
@@ -131,7 +211,7 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to search news. Please check your network connection.");
+        throw new Error("Failed to search news via backend.");
       }
 
       const data = await response.json();
@@ -143,7 +223,101 @@ export default function App() {
         setNewsCache(updatedCache);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || "An unexpected error occurred while fetching news.");
+      console.warn("Backend fetch failed, attempting client-side CORS proxy crawler...", err);
+      try {
+        const updatedCache = { ...newsCache };
+        const results = await Promise.all(
+          targetTeams.map(async (team) => {
+            try {
+              let sitesFilter = "";
+              if (Array.isArray(settings.customSites) && settings.customSites.length > 0) {
+                const formattedSites = settings.customSites
+                  .map((s: string) => s.trim())
+                  .filter((s: string) => s.length > 0)
+                  .map((s: string) => (s.startsWith("site:") ? s : `site:${s}`));
+
+                if (formattedSites.length > 0) {
+                  sitesFilter = ` (${formattedSites.join(" OR ")})`;
+                }
+              }
+
+              const searchQuery = sitesFilter ? `"${team}"${sitesFilter}` : `"${team}"`;
+              const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en`;
+              const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
+
+              const proxyRes = await fetch(proxyUrl);
+              if (!proxyRes.ok) throw new Error("CORS Proxy error");
+              
+              const proxyJson = await proxyRes.json();
+              const xmlText = proxyJson.contents;
+              
+              if (!xmlText) throw new Error("No XML content found");
+
+              const rawArticles = parseGoogleNewsRSSClient(xmlText);
+              let articles = rawArticles.filter(art => isHeadlineMatchClient(art.title, team));
+
+              const days = Math.min(Math.max(Number(settings.recencyDays) || 1, 1), 5);
+              const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+              let filteredArticles = articles.filter((art) => art.timestamp >= cutoffTime);
+
+              if (filteredArticles.length === 0 && sitesFilter) {
+                const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`;
+                const genProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(generalUrl)}`;
+                const genProxyRes = await fetch(genProxyUrl);
+                if (genProxyRes.ok) {
+                  const genProxyJson = await genProxyRes.json();
+                  const genXml = genProxyJson?.contents;
+                  if (genXml) {
+                    const genArticles = parseGoogleNewsRSSClient(genXml);
+                    filteredArticles = genArticles
+                      .filter(art => isHeadlineMatchClient(art.title, team))
+                      .filter((art) => art.timestamp >= cutoffTime);
+                  }
+                }
+              }
+
+              filteredArticles.sort((a, b) => b.timestamp - a.timestamp);
+              const topArticles = filteredArticles.slice(0, 8);
+              const links = topArticles.map((art) => ({
+                title: art.title,
+                url: art.url,
+              }));
+
+              return {
+                team,
+                summary: topArticles.length > 0
+                  ? `• Direct Sports Feed Active (Client-Side). Loaded ${topArticles.length} recent headline${topArticles.length > 1 ? "s" : ""} directly from your tracking feed.\n• Chronological live timeline of match reports and squad news below.`
+                  : `• No recent developments found on your selected sports websites in the last ${days} days. Try expanding your Recency window or updating customized domains.`,
+                links: links.length > 0 ? links : [
+                  { title: `Search ${team} news on Google`, url: `https://www.google.com/search?q=${encodeURIComponent(team)}` }
+                ],
+                articles: topArticles,
+                timestamp: Date.now(),
+              };
+            } catch (innerErr: any) {
+              console.error(`Client-side crawl error for ${team}:`, innerErr);
+              return {
+                team,
+                summary: `• Offline Fallback: Temporary communication error fetching headlines for ${team}.\n• Please check settings or wait for automatic retry.`,
+                links: [
+                  { title: `${team} Hub Page`, url: `https://www.google.com/search?q=${encodeURIComponent(team)}` }
+                ],
+                articles: [],
+                timestamp: Date.now(),
+                error: true,
+              };
+            }
+          })
+        );
+
+        const mergedCache = { ...newsCache };
+        results.forEach((item: any) => {
+          mergedCache[item.team] = item;
+        });
+        setNewsCache(mergedCache);
+      } catch (fallbackErr) {
+        setErrorMsg("Failed to update sports news feed. Both backend and client proxy crawler are offline.");
+      }
     } finally {
       setIsLoading(false);
     }
