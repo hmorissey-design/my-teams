@@ -30,6 +30,108 @@ import_dotenv.default.config();
 var app = (0, import_express.default)();
 var PORT = 3e3;
 app.use(import_express.default.json());
+function decodeGoogleNewsUrl(googleUrl) {
+  try {
+    const urlObj = new URL(googleUrl);
+    if (urlObj.hostname.includes("news.google.com")) {
+      const pathParts = urlObj.pathname.split("/");
+      const base64Part = pathParts[pathParts.length - 1];
+      if (base64Part && base64Part.startsWith("CBMi")) {
+        let normalizedBase64 = base64Part.replace(/-/g, "+").replace(/_/g, "/");
+        while (normalizedBase64.length % 4 !== 0) {
+          normalizedBase64 += "=";
+        }
+        const decoded = Buffer.from(normalizedBase64, "base64").toString("utf-8");
+        const httpIndex = decoded.indexOf("http");
+        if (httpIndex !== -1) {
+          const urlPart = decoded.slice(httpIndex);
+          const cleanUrlMatch = urlPart.match(/^(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/);
+          if (cleanUrlMatch) {
+            return cleanUrlMatch[1];
+          }
+        }
+      }
+    }
+  } catch (e) {
+  }
+  return googleUrl;
+}
+function isSpamArticle(title, url) {
+  const titleLower = title.toLowerCase();
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch (e) {
+  }
+  const TRUSTED_STREAM_DOMAINS = [
+    "espn.com",
+    "sportsnet.ca",
+    "tsn.ca",
+    "nhl.com",
+    "chl.ca",
+    "theqmjhl.ca",
+    "cbc.ca",
+    "rds.ca",
+    "tvasports.ca",
+    "youtube.com",
+    "vimeo.com",
+    "twitch.tv",
+    "cbssports.com",
+    "nbcsports.com",
+    "foxsports.com"
+  ];
+  const SPAM_PHRASES = [
+    "live stream",
+    "livestream",
+    "free stream",
+    "stream free",
+    "watch live",
+    "how to watch",
+    "streaming free",
+    "live broadcast",
+    "stream link",
+    "hd stream",
+    "stream online",
+    "watch online",
+    "broadcast online"
+  ];
+  const hasSpamPhrase = SPAM_PHRASES.some((phrase) => titleLower.includes(phrase));
+  if (hasSpamPhrase) {
+    const isTrusted = TRUSTED_STREAM_DOMAINS.some((domain) => hostname.includes(domain));
+    if (!isTrusted) {
+      return true;
+    }
+  }
+  const SPAM_DOMAINS = [
+    "fathomjournal.org",
+    "fathom",
+    "live-stream",
+    "livestream",
+    "sportingnews24",
+    "freestreams",
+    "buffstreams",
+    "vipleague",
+    "cricfree",
+    "crackstreams",
+    "hacked",
+    "redirect"
+  ];
+  if (SPAM_DOMAINS.some((domain) => hostname.includes(domain))) {
+    return true;
+  }
+  const hostnameParts = hostname.split(".");
+  if (hostnameParts.length > 1) {
+    const tld = hostnameParts[hostnameParts.length - 1];
+    const SUSPICIOUS_TLDS = ["xyz", "top", "online", "click", "download", "club", "biz", "live", "stream", "link", "today"];
+    if (SUSPICIOUS_TLDS.includes(tld)) {
+      const isTrusted = TRUSTED_STREAM_DOMAINS.some((domain) => hostname.includes(domain));
+      if (!isTrusted) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 function parseGoogleNewsRSS(xmlText) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -52,9 +154,10 @@ function parseGoogleNewsRSS(xmlText) {
     const sourceMatch = itemContent.match(/<source[^>]*>([\s\S]*?)<\/source>/);
     const source = sourceMatch ? sourceMatch[1] : "Sports Portal";
     let cleanTitle = titleStr.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+    const directUrl = decodeGoogleNewsUrl(url);
     items.push({
       title: cleanTitle,
-      url,
+      url: directUrl,
       timestamp,
       source: source || "Sports News"
     });
@@ -132,8 +235,29 @@ app.post("/api/news", async (req, res) => {
           const isHeadlineMatch = (artTitle) => {
             const titleLower = artTitle.toLowerCase();
             if (titleLower.includes(teamLower)) return true;
-            for (const word of signatureWords) {
-              if (titleLower.includes(word)) return true;
+            if (signatureWords.length > 1) {
+              const hasAllWords = signatureWords.every((w) => titleLower.includes(w));
+              if (hasAllWords) return true;
+              const geoWord = signatureWords[0];
+              if (titleLower.includes(geoWord)) {
+                const sportsIndicators = ["win", "lose", "game", "match", "play", "squad", "coach", "signing", "goal", "defeat", "cup", "league", "qmjhl", "hockey", "score", "points", "season", "draft", "roster", "player", "trade", "contract", "injury"];
+                const hasSportsWord = sportsIndicators.some((w) => titleLower.includes(w));
+                if (hasSportsWord) return true;
+                if (titleLower.includes(" vs ") || titleLower.includes(" vs. ") || titleLower.includes(" at ")) return true;
+              }
+              const nicknameWord = signatureWords[signatureWords.length - 1];
+              if (titleLower.includes(nicknameWord)) {
+                const commonNicks = ["wildcats", "giants", "tigers", "panthers", "lions", "eagles", "cardinals", "bulldogs", "rangers", "kings", "jets", "stars"];
+                if (commonNicks.includes(nicknameWord)) {
+                  const regionalContext = ["qmjhl", "lhjmq", "hockey", "chl", "halifax", "mooseheads", "saint john", "sea dogs", "bathurst", "titan", "cape breton", "eagles", "rimouski", "oceanic", "quebec", "remparts", "chicoutimi", "sagueneens", "shawinigan", "cataractes", "sherbrooke", "phoenix", "rouyn-noranda", "huskies", "val-d'or", "foreurs", "boisbriand", "armada", "victoriaville", "tigres", "drummondville", "voltigeurs", "charlottetown", "islanders", "baie-comeau", "drakkar"];
+                  const hasContext = regionalContext.some((ctx) => titleLower.includes(ctx));
+                  if (hasContext) return true;
+                } else {
+                  return true;
+                }
+              }
+            } else if (signatureWords.length === 1) {
+              if (titleLower.includes(signatureWords[0])) return true;
             }
             for (const nick of sportsNicknames) {
               if (titleLower.includes(nick)) return true;
@@ -151,7 +275,7 @@ app.post("/api/news", async (req, res) => {
           if (response.ok) {
             const xmlText = await response.text();
             const rawArticles = parseGoogleNewsRSS(xmlText);
-            articles = rawArticles.filter((art) => isHeadlineMatch(art.title));
+            articles = rawArticles.filter((art) => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url));
           }
           const cutoffTime = Date.now() - days * 24 * 60 * 60 * 1e3;
           let filteredArticles = articles.filter((art) => art.timestamp >= cutoffTime);
@@ -163,7 +287,7 @@ app.post("/api/news", async (req, res) => {
             if (genResponse.ok) {
               const genXml = await genResponse.text();
               const genArticles = parseGoogleNewsRSS(genXml);
-              filteredArticles = genArticles.filter((art) => isHeadlineMatch(art.title)).filter((art) => art.timestamp >= cutoffTime);
+              filteredArticles = genArticles.filter((art) => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url)).filter((art) => art.timestamp >= cutoffTime);
             }
           }
           filteredArticles.sort((a, b) => b.timestamp - a.timestamp);
