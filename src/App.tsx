@@ -226,6 +226,48 @@ export default function App() {
     return false;
   };
 
+  const fetchRssWithFallbackProxies = async (rssUrl: string): Promise<string> => {
+    const proxies = [
+      // 1. corsproxy.io (very fast, direct text response)
+      async () => {
+        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(rssUrl)}`);
+        if (!res.ok) throw new Error("corsproxy.io failed");
+        const text = await res.text();
+        if (!text || text.length < 100) throw new Error("Empty or short response from corsproxy.io");
+        return text;
+      },
+      // 2. allorigins.win (returns nested JSON wrapper)
+      async () => {
+        const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
+        if (!res.ok) throw new Error("allorigins failed");
+        const json = await res.json();
+        if (!json.contents) throw new Error("allorigins empty content");
+        if (json.contents.length < 100) throw new Error("Short response from allorigins");
+        return json.contents;
+      },
+      // 3. codetabs (alternative direct proxy)
+      async () => {
+        const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rssUrl)}`);
+        if (!res.ok) throw new Error("codetabs failed");
+        const text = await res.text();
+        if (!text || text.length < 100) throw new Error("Empty or short response from codetabs");
+        return text;
+      }
+    ];
+
+    let lastError: any = null;
+    for (let i = 0; i < proxies.length; i++) {
+      try {
+        const text = await proxies[i]();
+        return text;
+      } catch (err) {
+        lastError = err;
+        console.warn(`Proxy ${i + 1} failed:`, err);
+      }
+    }
+    throw lastError || new Error("All client-side CORS proxies failed");
+  };
+
   const parseGoogleNewsRSSClient = (xmlText: string) => {
     const items: any[] = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -395,15 +437,9 @@ export default function App() {
 
               const searchQuery = sitesFilter ? `"${team}"${sitesFilter}` : `"${team}"`;
               const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en`;
-              const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
 
-              const proxyRes = await fetch(proxyUrl);
-              if (!proxyRes.ok) throw new Error("CORS Proxy error");
-              
-              const proxyJson = await proxyRes.json();
-              const xmlText = proxyJson.contents;
-              
-              if (!xmlText) throw new Error("No XML content found");
+              // Fetch with robust multi-proxy fallback mechanism
+              const xmlText = await fetchRssWithFallbackProxies(rssUrl);
 
               const rawArticles = parseGoogleNewsRSSClient(xmlText);
               let articles = rawArticles.filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url));
@@ -414,17 +450,14 @@ export default function App() {
 
               if (filteredArticles.length === 0 && sitesFilter) {
                 const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`;
-                const genProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(generalUrl)}`;
-                const genProxyRes = await fetch(genProxyUrl);
-                if (genProxyRes.ok) {
-                  const genProxyJson = await genProxyRes.json();
-                  const genXml = genProxyJson?.contents;
-                  if (genXml) {
-                    const genArticles = parseGoogleNewsRSSClient(genXml);
-                    filteredArticles = genArticles
-                      .filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url))
-                      .filter((art) => art.timestamp >= cutoffTime);
-                  }
+                try {
+                  const genXml = await fetchRssWithFallbackProxies(generalUrl);
+                  const genArticles = parseGoogleNewsRSSClient(genXml);
+                  filteredArticles = genArticles
+                    .filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url))
+                    .filter((art) => art.timestamp >= cutoffTime);
+                } catch (genErr) {
+                  console.warn(`General backup client crawl failed for ${team}:`, genErr);
                 }
               }
 
