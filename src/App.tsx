@@ -446,20 +446,6 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => clearFeedCache()}
-            disabled={isLoading}
-            className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-sm font-semibold ${
-              settings.darkMode 
-                ? 'bg-rose-500/10 border-rose-500/20 hover:bg-rose-500/20 text-rose-400' 
-                : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 shadow-sm'
-            } disabled:opacity-50`}
-            title="Wipe saved headlines and run a clean crawl query"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Reset Cache</span>
-          </button>
-
-          <button 
             id="settings-trigger"
             onClick={() => setShowSettings(true)}
             className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-sm font-semibold ${
