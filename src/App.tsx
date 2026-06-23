@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { TeamNews, AppSettings, AdData } from "./types";
 import { POPULAR_TEAMS, GOOGLE_ADMOB_ADS } from "./data";
+// @ts-ignore
+import appLogo from "./assets/images/sports_app_logo_1782243294195.jpg";
 
 export default function App() {
   // --- Persistent Local State ---
@@ -569,8 +571,13 @@ export default function App() {
       {/* ================= HEADER & NAVIGATION ================= */}
       <nav id="app-navbar" className={`h-16 px-6 border-b flex items-center justify-between shrink-0 transition-colors ${settings.darkMode ? 'bg-slate-950/80 backdrop-blur-md border-slate-800' : 'bg-white/80 backdrop-blur-md border-slate-200'}`}>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Trophy className="w-5 h-5 text-slate-950" />
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/30 flex items-center justify-center bg-slate-900 shrink-0">
+            <img 
+              src={appLogo} 
+              alt="My Teams Logo" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <div>
             <h1 className="text-lg font-black tracking-tight uppercase flex items-center gap-2">
