@@ -16,7 +16,9 @@ import {
   Compass,
   ArrowRight,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { TeamNews, AppSettings, AdData } from "./types";
 import { POPULAR_TEAMS, GOOGLE_ADMOB_ADS } from "./data";
@@ -62,6 +64,23 @@ export default function App() {
     return {};
   });
 
+  const [viewedLinks, setViewedLinks] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("my_teams_viewed_links");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const markLinkAsViewed = (url: string) => {
+    if (!viewedLinks.includes(url)) {
+      const updated = [...viewedLinks, url];
+      setViewedLinks(updated);
+      localStorage.setItem("my_teams_viewed_links", JSON.stringify(updated));
+    }
+  };
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [customTeamInput, setCustomTeamInput] = useState("");
@@ -106,6 +125,92 @@ export default function App() {
   }, []);
 
   // Client-side parser helpers for when server proxy is unavailable (e.g. GitHub Pages)
+  const decodeGoogleNewsUrlClient = (googleUrl: string): string => {
+    try {
+      const urlObj = new URL(googleUrl);
+      if (urlObj.hostname.includes("news.google.com")) {
+        const pathParts = urlObj.pathname.split("/");
+        const base64Part = pathParts[pathParts.length - 1];
+        if (base64Part && base64Part.startsWith("CBMi")) {
+          let normalizedBase64 = base64Part
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+          
+          while (normalizedBase64.length % 4 !== 0) {
+            normalizedBase64 += "=";
+          }
+
+          const decoded = atob(normalizedBase64);
+          const httpIndex = decoded.indexOf("http");
+          if (httpIndex !== -1) {
+            const urlPart = decoded.slice(httpIndex);
+            const cleanUrlMatch = urlPart.match(/^(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/);
+            if (cleanUrlMatch) {
+              return cleanUrlMatch[1];
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return googleUrl;
+  };
+
+  const isSpamArticle = (title: string, url: string): boolean => {
+    const titleLower = title.toLowerCase();
+    let hostname = "";
+    try {
+      hostname = new URL(url).hostname.toLowerCase();
+    } catch (e) {
+      // ignore
+    }
+
+    const TRUSTED_STREAM_DOMAINS = [
+      "espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "chl.ca", "theqmjhl.ca", 
+      "cbc.ca", "rds.ca", "tvasports.ca", "youtube.com", "vimeo.com", "twitch.tv",
+      "cbssports.com", "nbcsports.com", "foxsports.com"
+    ];
+
+    const SPAM_PHRASES = [
+      "live stream", "livestream", "free stream", "stream free", "watch live", 
+      "how to watch", "streaming free", "live broadcast", "stream link", 
+      "hd stream", "stream online", "watch online", "broadcast online"
+    ];
+
+    const hasSpamPhrase = SPAM_PHRASES.some(phrase => titleLower.includes(phrase));
+
+    if (hasSpamPhrase) {
+      const isTrusted = TRUSTED_STREAM_DOMAINS.some(domain => hostname.includes(domain));
+      if (!isTrusted) {
+        return true;
+      }
+    }
+
+    const SPAM_DOMAINS = [
+      "fathomjournal.org", "fathom", "live-stream", "livestream", "sportingnews24",
+      "freestreams", "buffstreams", "vipleague", "cricfree", "crackstreams", "hacked", "redirect"
+    ];
+
+    if (SPAM_DOMAINS.some(domain => hostname.includes(domain))) {
+      return true;
+    }
+
+    const hostnameParts = hostname.split(".");
+    if (hostnameParts.length > 1) {
+      const tld = hostnameParts[hostnameParts.length - 1];
+      const SUSPICIOUS_TLDS = ["xyz", "top", "online", "click", "download", "club", "biz", "live", "stream", "link", "today"];
+      if (SUSPICIOUS_TLDS.includes(tld)) {
+        const isTrusted = TRUSTED_STREAM_DOMAINS.some(domain => hostname.includes(domain));
+        if (!isTrusted) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
   const parseGoogleNewsRSSClient = (xmlText: string) => {
     const items: any[] = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -138,9 +243,12 @@ export default function App() {
         .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
         .trim();
 
+      // Decode Google News redirect URL to direct URL
+      const directUrl = decodeGoogleNewsUrlClient(url);
+
       items.push({
         title: cleanTitle,
-        url,
+        url: directUrl,
         timestamp,
         source: source || "Sports News",
       });
@@ -151,6 +259,8 @@ export default function App() {
   const isHeadlineMatchClient = (artTitle: string, team: string): boolean => {
     const titleLower = artTitle.toLowerCase();
     const teamLower = team.toLowerCase();
+    
+    // 1. Direct full match (case-insensitive)
     if (titleLower.includes(teamLower)) return true;
 
     const commonAndLooseWords = [
@@ -164,8 +274,35 @@ export default function App() {
       .split(/\s+/)
       .filter(w => w.length >= 3 && !commonAndLooseWords.includes(w));
 
-    for (const word of signatureWords) {
-      if (titleLower.includes(word)) return true;
+    // 2. If the team name has multiple words (e.g. "Moncton Wildcats")
+    if (signatureWords.length > 1) {
+      const hasAllWords = signatureWords.every(w => titleLower.includes(w));
+      if (hasAllWords) return true;
+
+      // Check if it has the geographical/identifying primary word (usually the first word, e.g. "Moncton")
+      const geoWord = signatureWords[0];
+      if (titleLower.includes(geoWord)) {
+        const sportsIndicators = ["win", "lose", "game", "match", "play", "squad", "coach", "signing", "goal", "defeat", "cup", "league", "qmjhl", "hockey", "score", "points", "season", "draft", "roster", "player", "trade", "contract", "injury"];
+        const hasSportsWord = sportsIndicators.some(w => titleLower.includes(w));
+        if (hasSportsWord) return true;
+        
+        if (titleLower.includes(" vs ") || titleLower.includes(" vs. ") || titleLower.includes(" at ")) return true;
+      }
+
+      // Check if it has ONLY the common nickname (e.g. "Wildcats")
+      const nicknameWord = signatureWords[signatureWords.length - 1];
+      if (titleLower.includes(nicknameWord)) {
+        const commonNicks = ["wildcats", "giants", "tigers", "panthers", "lions", "eagles", "cardinals", "bulldogs", "rangers", "kings", "jets", "stars"];
+        if (commonNicks.includes(nicknameWord)) {
+          const regionalContext = ["qmjhl", "lhjmq", "hockey", "chl", "halifax", "mooseheads", "saint john", "sea dogs", "bathurst", "titan", "cape breton", "eagles", "rimouski", "oceanic", "quebec", "remparts", "chicoutimi", "sagueneens", "shawinigan", "cataractes", "sherbrooke", "phoenix", "rouyn-noranda", "huskies", "val-d'or", "foreurs", "boisbriand", "armada", "victoriaville", "tigres", "drummondville", "voltigeurs", "charlottetown", "islanders", "baie-comeau", "drakkar"];
+          const hasContext = regionalContext.some(ctx => titleLower.includes(ctx));
+          if (hasContext) return true;
+        } else {
+          return true;
+        }
+      }
+    } else if (signatureWords.length === 1) {
+      if (titleLower.includes(signatureWords[0])) return true;
     }
 
     const sportsNicknames: string[] = [];
@@ -254,7 +391,7 @@ export default function App() {
               if (!xmlText) throw new Error("No XML content found");
 
               const rawArticles = parseGoogleNewsRSSClient(xmlText);
-              let articles = rawArticles.filter(art => isHeadlineMatchClient(art.title, team));
+              let articles = rawArticles.filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url));
 
               const days = Math.min(Math.max(Number(settings.recencyDays) || 1, 1), 5);
               const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -270,7 +407,7 @@ export default function App() {
                   if (genXml) {
                     const genArticles = parseGoogleNewsRSSClient(genXml);
                     filteredArticles = genArticles
-                      .filter(art => isHeadlineMatchClient(art.title, team))
+                      .filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url))
                       .filter((art) => art.timestamp >= cutoffTime);
                   }
                 }
@@ -371,6 +508,21 @@ export default function App() {
     if (selectedTeamTab === teamName) {
       setSelectedTeamTab("All");
     }
+  };
+
+  const handleMoveTeam = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= settings.teams.length) return;
+    
+    const updatedTeams = [...settings.teams];
+    const temp = updatedTeams[index];
+    updatedTeams[index] = updatedTeams[targetIndex];
+    updatedTeams[targetIndex] = temp;
+    
+    setSettings(prev => ({
+      ...prev,
+      teams: updatedTeams
+    }));
   };
 
   const toggleDarkMode = () => {
@@ -639,6 +791,9 @@ export default function App() {
                 {[...settings.teams]
                   .filter(team => selectedTeamTab === "All" || selectedTeamTab === team)
                   .sort((a, b) => {
+                    if (settings.sortBy === "default") {
+                      return settings.teams.indexOf(a) - settings.teams.indexOf(b);
+                    }
                     const getLatestTime = (t: string) => {
                       const cache = newsCache[t];
                       if (!cache) return 0;
@@ -739,31 +894,63 @@ export default function App() {
                                       relativeTime = `${diffDays}d ago`;
                                     }
 
+                                    const isViewed = viewedLinks.includes(art.url);
+
                                     return (
                                       <a
                                         key={idx}
                                         href={art.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
+                                        onClick={() => markLinkAsViewed(art.url)}
                                         className={`p-3.5 rounded-xl border text-left flex items-start gap-3 group transition-all duration-150 ${
-                                          settings.darkMode
-                                            ? 'bg-slate-950/45 border-slate-800/70 hover:bg-slate-900/90 hover:border-emerald-500/40'
-                                            : 'bg-slate-50 border-slate-200 hover:bg-white hover:border-emerald-500/35 hover:shadow-sm'
+                                          isViewed
+                                            ? (settings.darkMode
+                                                ? 'bg-slate-950/20 border-slate-900/60 hover:bg-slate-900/40'
+                                                : 'bg-slate-100/50 border-slate-200/50 hover:bg-slate-100/80')
+                                            : (settings.darkMode
+                                                ? 'bg-slate-950/45 border-slate-800/70 hover:bg-slate-900/90 hover:border-emerald-500/40'
+                                                : 'bg-slate-50 border-slate-200 hover:bg-white hover:border-emerald-500/35 hover:shadow-sm')
                                         }`}
                                       >
-                                        <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full mt-2 shrink-0 group-hover:scale-125 transition-transform"></div>
+                                        <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 transition-transform ${
+                                          isViewed
+                                            ? 'bg-slate-600 dark:bg-slate-700'
+                                            : 'bg-emerald-400 group-hover:scale-125'
+                                        }`}></div>
                                         <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-bold leading-normal tracking-tight group-hover:text-emerald-400 transition-colors line-clamp-2 text-slate-100">
+                                          <p className={`text-xs font-bold leading-normal tracking-tight transition-colors line-clamp-2 ${
+                                            isViewed
+                                              ? (settings.darkMode 
+                                                  ? 'text-slate-500 group-hover:text-slate-400' 
+                                                  : 'text-slate-450 group-hover:text-slate-600')
+                                              : (settings.darkMode 
+                                                  ? 'text-slate-100 group-hover:text-emerald-400' 
+                                                  : 'text-slate-800 group-hover:text-emerald-600')
+                                          }`}>
                                             {art.title}
                                           </p>
                                           <div className="flex items-center gap-2 mt-1.5">
-                                            <span className="text-[9px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded font-mono">
+                                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded font-mono ${
+                                              isViewed
+                                                ? 'text-slate-500 bg-slate-500/5 dark:bg-slate-500/10'
+                                                : 'text-emerald-500 bg-emerald-500/10'
+                                            }`}>
                                               {art.source}
                                             </span>
                                             <span className="text-[9px] text-slate-500 font-mono">{relativeTime}</span>
+                                            {isViewed && (
+                                              <span className="text-[8px] uppercase tracking-wider font-extrabold text-slate-500 bg-slate-500/10 px-1 py-0.2 rounded font-mono">
+                                                Viewed
+                                              </span>
+                                            )}
                                           </div>
                                         </div>
-                                        <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 shrink-0 self-center" />
+                                        <ExternalLink className={`w-3 h-3 shrink-0 self-center transition-colors ${
+                                          isViewed
+                                            ? 'text-slate-600 group-hover:text-slate-500'
+                                            : 'text-slate-500 group-hover:text-emerald-400'
+                                        }`} />
                                       </a>
                                     );
                                   })
@@ -983,33 +1170,72 @@ export default function App() {
                 </div>
 
                 {/* Tracking stats / interactive preview block */}
-                <div className={`p-3 rounded-xl border space-y-2 mt-2 ${
+                <div className={`p-4 rounded-xl border space-y-3 mt-2 ${
                   settings.darkMode ? 'bg-slate-950/40 border-slate-850' : 'bg-slate-50 border-slate-200 shadow-inner'
                 }`}>
-                  <span className={`text-[9px] font-black uppercase tracking-wider block ${
-                    settings.darkMode ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Currently Tracked Teams ({settings.teams.length})</span>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-black uppercase tracking-wider block ${
+                      settings.darkMode ? 'text-slate-400' : 'text-slate-500'
+                    }`}>Currently Tracked Teams & Order ({settings.teams.length})</span>
+                    {settings.teams.length > 1 && (
+                      <span className="text-[9px] text-slate-500 font-medium">Use arrows to prioritize</span>
+                    )}
+                  </div>
                   
                   {settings.teams.length === 0 ? (
                     <span className="text-xs text-slate-500 italic block">No teams currently tracked. Select a league preset above or use the sidebar form.</span>
                   ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {settings.teams.map(t => (
-                        <span key={t} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 border ${
-                          settings.darkMode 
-                            ? 'bg-slate-900 border-slate-800 text-slate-350' 
-                            : 'bg-white border-slate-200 text-slate-705 shadow-sm'
-                        }`}>
-                          <span>{t}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveTeam(t)}
-                            className="text-rose-500 hover:text-rose-450 ml-1 font-bold text-xs"
-                            title={`Unfollow ${t}`}
-                          >
-                            ×
-                          </button>
-                        </span>
+                    <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                      {settings.teams.map((t, index) => (
+                        <div 
+                          key={t} 
+                          className={`flex items-center justify-between p-2 rounded-xl border text-xs font-bold transition-all ${
+                            settings.darkMode 
+                              ? 'bg-slate-900 border-slate-800 text-slate-200' 
+                              : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                          }`}
+                        >
+                          <span className="truncate flex-1 pr-2">{t}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {/* Move Up */}
+                            <button
+                              type="button"
+                              onClick={() => handleMoveTeam(index, 'up')}
+                              disabled={index === 0}
+                              className={`p-1 rounded transition-colors ${
+                                index === 0 
+                                  ? 'text-slate-600 cursor-not-allowed opacity-30' 
+                                  : settings.darkMode ? 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
+                              }`}
+                              title="Move team up (higher priority)"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Move Down */}
+                            <button
+                              type="button"
+                              onClick={() => handleMoveTeam(index, 'down')}
+                              disabled={index === settings.teams.length - 1}
+                              className={`p-1 rounded transition-colors ${
+                                index === settings.teams.length - 1 
+                                  ? 'text-slate-600 cursor-not-allowed opacity-30' 
+                                  : settings.darkMode ? 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
+                              }`}
+                              title="Move team down (lower priority)"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Remove */}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTeam(t)}
+                              className="p-1 rounded text-rose-500 hover:bg-rose-500/10 hover:text-rose-450 transition-colors ml-1"
+                              title={`Unfollow ${t}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1128,6 +1354,39 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* News Sorting Mode Control */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
+                    News Sorting Mode
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSettings(prev => ({ ...prev, sortBy: "recent" }))}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
+                        settings.sortBy === "recent"
+                          ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
+                          : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
+                      }`}
+                    >
+                      <span className="text-xs">⚡ Latest Activity</span>
+                      <span className="text-[9px] font-medium text-slate-500">Newest headline first</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings(prev => ({ ...prev, sortBy: "default" }))}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
+                        settings.sortBy === "default"
+                          ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
+                          : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
+                      }`}
+                    >
+                      <span className="text-xs">📌 Custom Order</span>
+                      <span className="text-[9px] font-medium text-slate-500">Use team list priority order</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Appearance Toggle */}
                 <div className={`p-3 rounded-xl border flex items-center justify-between ${
                   settings.darkMode ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
@@ -1156,6 +1415,33 @@ export default function App() {
                         <span>Light Theme</span>
                       </>
                     )}
+                  </button>
+                </div>
+
+                {/* Clear Viewed Articles History */}
+                <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                  settings.darkMode ? 'bg-slate-950/45 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
+                }`}>
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 uppercase block">Clear Read History</span>
+                    <span className="text-[11px] text-slate-500 block">Reset color styling for already clicked article links.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewedLinks([]);
+                      localStorage.removeItem("my_teams_viewed_links");
+                    }}
+                    disabled={viewedLinks.length === 0}
+                    className={`p-2.5 rounded-xl border transition-all text-xs font-bold shrink-0 ${
+                      viewedLinks.length === 0
+                        ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-600'
+                        : settings.darkMode 
+                          ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20' 
+                          : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 shadow-sm'
+                    }`}
+                  >
+                    Clear ({viewedLinks.length})
                   </button>
                 </div>
 

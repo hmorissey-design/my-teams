@@ -10,6 +10,93 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Google News redirect URL decoder and spam filters
+function decodeGoogleNewsUrl(googleUrl: string): string {
+  try {
+    const urlObj = new URL(googleUrl);
+    if (urlObj.hostname.includes("news.google.com")) {
+      const pathParts = urlObj.pathname.split("/");
+      const base64Part = pathParts[pathParts.length - 1];
+      if (base64Part && base64Part.startsWith("CBMi")) {
+        let normalizedBase64 = base64Part
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        
+        while (normalizedBase64.length % 4 !== 0) {
+          normalizedBase64 += "=";
+        }
+
+        const decoded = Buffer.from(normalizedBase64, "base64").toString("utf-8");
+        const httpIndex = decoded.indexOf("http");
+        if (httpIndex !== -1) {
+          const urlPart = decoded.slice(httpIndex);
+          const cleanUrlMatch = urlPart.match(/^(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/);
+          if (cleanUrlMatch) {
+            return cleanUrlMatch[1];
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return googleUrl;
+}
+
+function isSpamArticle(title: string, url: string): boolean {
+  const titleLower = title.toLowerCase();
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch (e) {
+    // ignore
+  }
+
+  const TRUSTED_STREAM_DOMAINS = [
+    "espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "chl.ca", "theqmjhl.ca", 
+    "cbc.ca", "rds.ca", "tvasports.ca", "youtube.com", "vimeo.com", "twitch.tv",
+    "cbssports.com", "nbcsports.com", "foxsports.com"
+  ];
+
+  const SPAM_PHRASES = [
+    "live stream", "livestream", "free stream", "stream free", "watch live", 
+    "how to watch", "streaming free", "live broadcast", "stream link", 
+    "hd stream", "stream online", "watch online", "broadcast online"
+  ];
+
+  const hasSpamPhrase = SPAM_PHRASES.some(phrase => titleLower.includes(phrase));
+
+  if (hasSpamPhrase) {
+    const isTrusted = TRUSTED_STREAM_DOMAINS.some(domain => hostname.includes(domain));
+    if (!isTrusted) {
+      return true;
+    }
+  }
+
+  const SPAM_DOMAINS = [
+    "fathomjournal.org", "fathom", "live-stream", "livestream", "sportingnews24",
+    "freestreams", "buffstreams", "vipleague", "cricfree", "crackstreams", "hacked", "redirect"
+  ];
+
+  if (SPAM_DOMAINS.some(domain => hostname.includes(domain))) {
+    return true;
+  }
+
+  const hostnameParts = hostname.split(".");
+  if (hostnameParts.length > 1) {
+    const tld = hostnameParts[hostnameParts.length - 1];
+    const SUSPICIOUS_TLDS = ["xyz", "top", "online", "click", "download", "club", "biz", "live", "stream", "link", "today"];
+    if (SUSPICIOUS_TLDS.includes(tld)) {
+      const isTrusted = TRUSTED_STREAM_DOMAINS.some(domain => hostname.includes(domain));
+      if (!isTrusted) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 // XML parser for Google News RSS
 function parseGoogleNewsRSS(xmlText: string): any[] {
   const items: any[] = [];
@@ -52,11 +139,12 @@ function parseGoogleNewsRSS(xmlText: string): any[] {
       .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
       .trim();
 
-    // Sometimes the publisher name is appended at the end like "- ESPN" or "- Sportsnet.ca"
-    // We can leave it, or let it slide since it's already highly readable.
+    // Decode Google News redirect URL to direct URL
+    const directUrl = decodeGoogleNewsUrl(url);
+
     items.push({
       title: cleanTitle,
-      url,
+      url: directUrl,
       timestamp,
       source: source || "Sports News",
     });
@@ -117,12 +205,39 @@ app.post("/api/news", async (req, res) => {
 
           const isHeadlineMatch = (artTitle: string): boolean => {
             const titleLower = artTitle.toLowerCase();
-            // Always allow if contains full team name
-            if (titleLower.includes(teamLower)) return true;
             
-            // Check signature words (must match at least one specific descriptive word)
-            for (const word of signatureWords) {
-              if (titleLower.includes(word)) return true;
+            // 1. Direct full match (case-insensitive)
+            if (titleLower.includes(teamLower)) return true;
+
+            // 2. If the team name has multiple words (e.g. "Moncton Wildcats")
+            if (signatureWords.length > 1) {
+              const hasAllWords = signatureWords.every(w => titleLower.includes(w));
+              if (hasAllWords) return true;
+
+              // Check if it has the geographical/identifying primary word (usually the first word, e.g. "Moncton")
+              const geoWord = signatureWords[0];
+              if (titleLower.includes(geoWord)) {
+                const sportsIndicators = ["win", "lose", "game", "match", "play", "squad", "coach", "signing", "goal", "defeat", "cup", "league", "qmjhl", "hockey", "score", "points", "season", "draft", "roster", "player", "trade", "contract", "injury"];
+                const hasSportsWord = sportsIndicators.some(w => titleLower.includes(w));
+                if (hasSportsWord) return true;
+                
+                if (titleLower.includes(" vs ") || titleLower.includes(" vs. ") || titleLower.includes(" at ")) return true;
+              }
+
+              // Check if it has ONLY the common nickname (e.g. "Wildcats")
+              const nicknameWord = signatureWords[signatureWords.length - 1];
+              if (titleLower.includes(nicknameWord)) {
+                const commonNicks = ["wildcats", "giants", "tigers", "panthers", "lions", "eagles", "cardinals", "bulldogs", "rangers", "kings", "jets", "stars"];
+                if (commonNicks.includes(nicknameWord)) {
+                  const regionalContext = ["qmjhl", "lhjmq", "hockey", "chl", "halifax", "mooseheads", "saint john", "sea dogs", "bathurst", "titan", "cape breton", "eagles", "rimouski", "oceanic", "quebec", "remparts", "chicoutimi", "sagueneens", "shawinigan", "cataractes", "sherbrooke", "phoenix", "rouyn-noranda", "huskies", "val-d'or", "foreurs", "boisbriand", "armada", "victoriaville", "tigres", "drummondville", "voltigeurs", "charlottetown", "islanders", "baie-comeau", "drakkar"];
+                  const hasContext = regionalContext.some(ctx => titleLower.includes(ctx));
+                  if (hasContext) return true;
+                } else {
+                  return true;
+                }
+              }
+            } else if (signatureWords.length === 1) {
+              if (titleLower.includes(signatureWords[0])) return true;
             }
 
             // Check sport specific nicknames
@@ -150,7 +265,7 @@ app.post("/api/news", async (req, res) => {
             const xmlText = await response.text();
             const rawArticles = parseGoogleNewsRSS(xmlText);
             // Apply strict headline relevance filter right at retrieval time
-            articles = rawArticles.filter(art => isHeadlineMatch(art.title));
+            articles = rawArticles.filter(art => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url));
           }
 
           // Filter articles according to the lookback window
@@ -167,7 +282,7 @@ app.post("/api/news", async (req, res) => {
               const genXml = await genResponse.text();
               const genArticles = parseGoogleNewsRSS(genXml);
               filteredArticles = genArticles
-                .filter(art => isHeadlineMatch(art.title))
+                .filter(art => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url))
                 .filter((art) => art.timestamp >= cutoffTime);
             }
           }
