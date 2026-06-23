@@ -32,13 +32,26 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        
+        let loadedCustomSites = Array.isArray(parsed.customSites) ? parsed.customSites : ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"];
+        
+        // Migrate existing saved state to automatically include new default outlets if missing
+        if (Array.isArray(parsed.customSites)) {
+          if (!loadedCustomSites.includes("skysports.com")) {
+            loadedCustomSites = [...loadedCustomSites, "skysports.com"];
+          }
+          if (!loadedCustomSites.includes("goal.com")) {
+            loadedCustomSites = [...loadedCustomSites, "goal.com"];
+          }
+        }
+
         // Ensure standard structure
         return {
           recencyDays: typeof parsed.recencyDays === "number" ? parsed.recencyDays : 3,
           darkMode: typeof parsed.darkMode === "boolean" ? parsed.darkMode : true,
           teams: Array.isArray(parsed.teams) ? parsed.teams : ["Montreal Canadiens", "Toronto Blue Jays"],
           feedMode: typeof parsed.feedMode === "string" ? parsed.feedMode : "direct",
-          customSites: Array.isArray(parsed.customSites) ? parsed.customSites : ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com"],
+          customSites: loadedCustomSites,
           sortBy: typeof parsed.sortBy === "string" ? parsed.sortBy : "recent",
         };
       } catch (e) {
@@ -50,7 +63,7 @@ export default function App() {
       darkMode: true,
       teams: ["Montreal Canadiens", "Toronto Blue Jays"],
       feedMode: "direct",
-      customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com"],
+      customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"],
       sortBy: "recent",
     };
   });
@@ -1258,34 +1271,117 @@ export default function App() {
                     Target Sports Web Outlets to Display News From
                   </label>
                   
-                  <div className="flex flex-wrap gap-1.5">
-                    {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
-                      const isActive = settings.customSites.includes(site);
-                      return (
-                        <button
-                          key={site}
-                          type="button"
-                          onClick={() => {
-                            setSettings(p => {
-                              const updated = isActive 
-                                ? p.customSites.filter(s => s !== site)
-                                : [...p.customSites, site];
-                              return { ...p, customSites: updated };
-                            });
-                          }}
-                          className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
-                            isActive
-                              ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                              : settings.darkMode
-                                ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
-                          }`}
-                        >
-                          {isActive ? "✓ " : ""}{site}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <div className="space-y-3">
+                    {/* Global & NA */}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                        Global & North America
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
+                          const isActive = settings.customSites.includes(site);
+                          return (
+                            <button
+                              key={site}
+                              type="button"
+                              onClick={() => {
+                                setSettings(p => {
+                                  const updated = isActive 
+                                    ? p.customSites.filter(s => s !== site)
+                                    : [...p.customSites, site];
+                                  return { ...p, customSites: updated };
+                                });
+                              }}
+                              className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                                isActive
+                                  ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
+                                  : settings.darkMode
+                                    ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
+                                    : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {isActive ? "✓ " : ""}{site}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* UK & English Europe */}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                        United Kingdom & Global Soccer
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {["skysports.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "goal.com"].map((site) => {
+                          const isActive = settings.customSites.includes(site);
+                          return (
+                            <button
+                              key={site}
+                              type="button"
+                              onClick={() => {
+                                setSettings(p => {
+                                  const updated = isActive 
+                                    ? p.customSites.filter(s => s !== site)
+                                    : [...p.customSites, site];
+                                  return { ...p, customSites: updated };
+                                });
+                              }}
+                              className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                                isActive
+                                  ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
+                                  : settings.darkMode
+                                    ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
+                                    : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {isActive ? "✓ " : ""}{site}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Continental Europe */}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                        Continental Europe (Local News & Newspapers)
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          "marca.com", "as.com", "mundodeportivo.com", // Spain
+                          "gazzetta.it", "corrieredellosport.it", "tuttosport.com", // Italy
+                          "kicker.de", "bild.de", "sport1.de", // Germany
+                          "lequipe.fr", "francefootball.fr", "footmercato.net" // France
+                        ].map((site) => {
+                          const isActive = settings.customSites.includes(site);
+                          return (
+                            <button
+                              key={site}
+                              type="button"
+                              onClick={() => {
+                                setSettings(p => {
+                                  const updated = isActive 
+                                    ? p.customSites.filter(s => s !== site)
+                                    : [...p.customSites, site];
+                                  return { ...p, customSites: updated };
+                                });
+                              }}
+                              className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                                isActive
+                                  ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
+                                  : settings.darkMode
+                                    ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
+                                    : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                                {isActive ? "✓ " : ""}{site}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
 
                   {/* Add Custom Outlets */}
                   <div className="flex gap-2 mt-2">
@@ -1319,7 +1415,21 @@ export default function App() {
                     <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-24 overflow-y-auto ${
                       settings.darkMode ? 'bg-slate-950/30 border-slate-855' : 'bg-slate-50 border-slate-200 shadow-inner'
                     }`}>
-                      <span className="text-[9px] font-bold text-slate-500 uppercase block w-full">Currently active outlets filter ({settings.customSites.length}):</span>
+                      <div className="flex justify-between items-center w-full mb-1">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase block">Currently active outlets filter ({settings.customSites.length}):</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettings(p => ({
+                              ...p,
+                              customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"]
+                            }));
+                          }}
+                          className="text-[9px] text-emerald-500 hover:text-emerald-400 font-bold transition-all"
+                        >
+                          Reset to Defaults
+                        </button>
+                      </div>
                       {settings.customSites.map(s => (
                         <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
                           settings.darkMode ? 'bg-slate-800 text-slate-350' : 'bg-white border border-slate-200 text-slate-700 shadow-sm'
