@@ -26,9 +26,27 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_dotenv = __toESM(require("dotenv"), 1);
+var import_genai = require("@google/genai");
 import_dotenv.default.config();
 var app = (0, import_express.default)();
 var PORT = 3e3;
+var aiClient = null;
+function getGeminiClient() {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      aiClient = new import_genai.GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build"
+          }
+        }
+      });
+    }
+  }
+  return aiClient;
+}
 app.use(import_express.default.json());
 function decodeGoogleNewsUrl(googleUrl) {
   try {
@@ -281,13 +299,65 @@ app.post("/api/news", async (req, res) => {
           let filteredArticles = articles.filter((art) => art.timestamp >= cutoffTime);
           if (filteredArticles.length === 0 && sitesFilter) {
             const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`;
-            const genResponse = await fetch(generalUrl, {
-              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0)" }
-            });
-            if (genResponse.ok) {
-              const genXml = await genResponse.text();
-              const genArticles = parseGoogleNewsRSS(genXml);
-              filteredArticles = genArticles.filter((art) => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url)).filter((art) => art.timestamp >= cutoffTime);
+            try {
+              const genResponse = await fetch(generalUrl, {
+                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0)" }
+              });
+              if (genResponse.ok) {
+                const genXml = await genResponse.text();
+                const genArticles = parseGoogleNewsRSS(genXml);
+                filteredArticles = genArticles.filter((art) => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url)).filter((art) => art.timestamp >= cutoffTime);
+              }
+            } catch (err) {
+              console.warn(`General RSS feed fetch failed for ${team}, trying Gemini search grounding...`);
+            }
+          }
+          let summaryText = "";
+          if (filteredArticles.length === 0) {
+            const ai = getGeminiClient();
+            if (ai) {
+              try {
+                console.log(`[Backup] Fetching via Gemini Search Grounding for ${team}...`);
+                const aiResponse = await ai.models.generateContent({
+                  model: "gemini-3.5-flash",
+                  contents: `Find the absolute latest news articles, match results, transfers, or official announcements about the sports team "${team}" in the last few days. Focus strictly on real news. Provide a brief 1-2 sentence overview of the team's current status.`,
+                  config: {
+                    tools: [{ googleSearch: {} }]
+                  }
+                });
+                const chunks = aiResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
+                if (chunks && chunks.length > 0) {
+                  const aiArticles = [];
+                  chunks.forEach((chunk) => {
+                    if (chunk.web && chunk.web.uri && chunk.web.title) {
+                      if (!isSpamArticle(chunk.web.title, chunk.web.uri)) {
+                        let parsedHost = "";
+                        try {
+                          parsedHost = new URL(chunk.web.uri).hostname.replace("www.", "");
+                        } catch (e) {
+                          parsedHost = "Google Search";
+                        }
+                        aiArticles.push({
+                          title: chunk.web.title,
+                          url: chunk.web.uri,
+                          timestamp: Date.now(),
+                          source: parsedHost
+                        });
+                      }
+                    }
+                  });
+                  if (aiArticles.length > 0) {
+                    filteredArticles = aiArticles;
+                    const textOut = aiResponse.text;
+                    if (textOut) {
+                      summaryText = `\u2022 Gemini AI Live Analysis: ${textOut.trim()}
+\u2022 Chronological live timeline of match reports and squad news compiled below.`;
+                    }
+                  }
+                }
+              } catch (aiErr) {
+                console.error(`Gemini Search Grounding fallback failed for ${team}:`, aiErr);
+              }
             }
           }
           filteredArticles.sort((a, b) => b.timestamp - a.timestamp);
@@ -296,10 +366,13 @@ app.post("/api/news", async (req, res) => {
             title: art.title,
             url: art.url
           }));
+          if (!summaryText) {
+            summaryText = topArticles.length > 0 ? `\u2022 Direct Sports Feed Active. Loaded ${topArticles.length} recent headline${topArticles.length > 1 ? "s" : ""} directly from your tracking feed.
+\u2022 Chronological live timeline of match reports and squad news below.` : `\u2022 No recent developments found on your selected sports websites in the last ${days} days. Try expanding your Recency window or updating customized domains.`;
+          }
           return {
             team,
-            summary: topArticles.length > 0 ? `\u2022 Direct Sports Feed Active. Loaded ${topArticles.length} recent headline${topArticles.length > 1 ? "s" : ""} directly from your tracking feed.
-\u2022 Chronological live timeline of match reports and squad news below.` : `\u2022 No recent developments found on your selected sports websites in the last ${days} days. Try expanding your Recency window or updating customized domains.`,
+            summary: summaryText,
             links: links.length > 0 ? links : [
               { title: `Search ${team} news on Google`, url: `https://www.google.com/search?q=${encodeURIComponent(team)}` }
             ],
