@@ -1,0 +1,6 @@
+{
+  "name": "MY TEAMS",
+  "description": "Track the latest news, updates, and articles for your favorite sports teams on your local device.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
