@@ -210,6 +210,8 @@ app.post("/api/news", async (req, res) => {
             "news",
             "official",
             "fc",
+            "cf",
+            "sc",
             "with",
             "from",
             "for",
