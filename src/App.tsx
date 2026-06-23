@@ -264,7 +264,7 @@ export default function App() {
     if (titleLower.includes(teamLower)) return true;
 
     const commonAndLooseWords = [
-      "the", "and", "team", "club", "sports", "news", "official", "fc", "with", "from", "for",
+      "the", "and", "team", "club", "sports", "news", "official", "fc", "cf", "sc", "with", "from", "for",
       "blue", "red", "white", "black", "green", "gold", "golden", "grey", "gray", "yellow", "orange",
       "mighty", "city", "bay", "real", "united", "town", "county", "rovers", "wanderers", "albion",
       "north", "south", "east", "west"
