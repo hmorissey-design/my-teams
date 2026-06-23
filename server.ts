@@ -2,11 +2,31 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Lazy initialize Gemini client to avoid crashes if API key is not present initially
+let aiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI | null {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      aiClient = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+    }
+  }
+  return aiClient;
+}
 
 app.use(express.json());
 
@@ -275,15 +295,71 @@ app.post("/api/news", async (req, res) => {
           // Fallback if domain-restricted search yielded zero results: query universally with simple query term so screen isn't empty
           if (filteredArticles.length === 0 && sitesFilter) {
             const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`;
-            const genResponse = await fetch(generalUrl, {
-              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0)" },
-            });
-            if (genResponse.ok) {
-              const genXml = await genResponse.text();
-              const genArticles = parseGoogleNewsRSS(genXml);
-              filteredArticles = genArticles
-                .filter(art => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url))
-                .filter((art) => art.timestamp >= cutoffTime);
+            try {
+              const genResponse = await fetch(generalUrl, {
+                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0)" },
+              });
+              if (genResponse.ok) {
+                const genXml = await genResponse.text();
+                const genArticles = parseGoogleNewsRSS(genXml);
+                filteredArticles = genArticles
+                  .filter(art => isHeadlineMatch(art.title) && !isSpamArticle(art.title, art.url))
+                  .filter((art) => art.timestamp >= cutoffTime);
+              }
+            } catch (err) {
+              console.warn(`General RSS feed fetch failed for ${team}, trying Gemini search grounding...`);
+            }
+          }
+
+          let summaryText = "";
+
+          // Super Fallback: If we still have 0 results (or the fetch failed / was rate-limited), query Gemini with Google Search Grounding!
+          if (filteredArticles.length === 0) {
+            const ai = getGeminiClient();
+            if (ai) {
+              try {
+                console.log(`[Backup] Fetching via Gemini Search Grounding for ${team}...`);
+                const aiResponse = await ai.models.generateContent({
+                  model: "gemini-3.5-flash",
+                  contents: `Find the absolute latest news articles, match results, transfers, or official announcements about the sports team "${team}" in the last few days. Focus strictly on real news. Provide a brief 1-2 sentence overview of the team's current status.`,
+                  config: {
+                    tools: [{ googleSearch: {} }],
+                  },
+                });
+
+                const chunks = aiResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
+                if (chunks && chunks.length > 0) {
+                  const aiArticles: any[] = [];
+                  chunks.forEach((chunk: any) => {
+                    if (chunk.web && chunk.web.uri && chunk.web.title) {
+                      if (!isSpamArticle(chunk.web.title, chunk.web.uri)) {
+                        let parsedHost = "";
+                        try {
+                          parsedHost = new URL(chunk.web.uri).hostname.replace("www.", "");
+                        } catch (e) {
+                          parsedHost = "Google Search";
+                        }
+                        aiArticles.push({
+                          title: chunk.web.title,
+                          url: chunk.web.uri,
+                          timestamp: Date.now(),
+                          source: parsedHost,
+                        });
+                      }
+                    }
+                  });
+
+                  if (aiArticles.length > 0) {
+                    filteredArticles = aiArticles;
+                    const textOut = aiResponse.text;
+                    if (textOut) {
+                      summaryText = `• Gemini AI Live Analysis: ${textOut.trim()}\n• Chronological live timeline of match reports and squad news compiled below.`;
+                    }
+                  }
+                }
+              } catch (aiErr) {
+                console.error(`Gemini Search Grounding fallback failed for ${team}:`, aiErr);
+              }
             }
           }
 
@@ -299,12 +375,16 @@ app.post("/api/news", async (req, res) => {
             url: art.url,
           }));
 
-          // Return feed output directly (100% Free / Unlimited / No Gemini / No credits used)
+          if (!summaryText) {
+            summaryText = topArticles.length > 0
+              ? `• Direct Sports Feed Active. Loaded ${topArticles.length} recent headline${topArticles.length > 1 ? "s" : ""} directly from your tracking feed.\n• Chronological live timeline of match reports and squad news below.`
+              : `• No recent developments found on your selected sports websites in the last ${days} days. Try expanding your Recency window or updating customized domains.`;
+          }
+
+          // Return feed output directly
           return {
             team,
-            summary: topArticles.length > 0
-              ? `• Direct Sports Feed Active. Loaded ${topArticles.length} recent headline${topArticles.length > 1 ? "s" : ""} directly from your tracking feed.\n• Chronological live timeline of match reports and squad news below.`
-              : `• No recent developments found on your selected sports websites in the last ${days} days. Try expanding your Recency window or updating customized domains.`,
+            summary: summaryText,
             links: links.length > 0 ? links : [
               { title: `Search ${team} news on Google`, url: `https://www.google.com/search?q=${encodeURIComponent(team)}` }
             ],
