@@ -172,6 +172,217 @@ function parseGoogleNewsRSS(xmlText: string): any[] {
   return items;
 }
 
+// Helper to determine the sport of any given team
+function getSportForTeam(teamName: string): string {
+  const teamLower = teamName.toLowerCase().trim();
+
+  if (
+    teamLower.includes("canadiens") || teamLower.includes("leafs") || teamLower.includes("bruins") ||
+    teamLower.includes("rangers") || teamLower.includes("penguins") || teamLower.includes("blackhawks") ||
+    teamLower.includes("red wings") || teamLower.includes("oilers") || teamLower.includes("canucks") ||
+    teamLower.includes("knights") || teamLower.includes("colts") || teamLower.includes("otters") ||
+    teamLower.includes("spitfires") || teamLower.includes("greyhounds") || teamLower.includes("titan") ||
+    teamLower.includes("drakkar") || teamLower.includes("mooseheads") || teamLower.includes("blazers") ||
+    teamLower.includes("rockets") || teamLower.includes("silvertips") || teamLower.includes("marlies") ||
+    teamLower.includes("comets") || teamLower.includes("roadrunners") || teamLower.includes("wranglers") ||
+    teamLower.includes("monsters") || teamLower.includes("firebirds") || teamLower.includes("barracuda") ||
+    teamLower.includes("reign") || teamLower.includes("gulls") || teamLower.includes("condors") ||
+    teamLower.includes("senators") || teamLower.includes("devils") || teamLower.includes("islanders") ||
+    teamLower.includes("sabres") || teamLower.includes("flyers") || teamLower.includes("capitals") ||
+    teamLower.includes("hurricanes") || teamLower.includes("lightning") || teamLower.includes("panthers") ||
+    teamLower.includes("predators") || teamLower.includes("blues") || teamLower.includes("stars") ||
+    teamLower.includes("avalanche") || teamLower.includes("wild") || teamLower.includes("kraken") ||
+    teamLower.includes("coyotes") || teamLower.includes("thrashers") || teamLower.includes("wolf pack") ||
+    teamLower.includes("phantoms") || teamLower.includes("crunch") || teamLower.includes("bears") ||
+    teamLower.includes("admirals") || teamLower.includes("griffins") || teamLower.includes("moose") ||
+    teamLower.includes("wolves") || teamLower.includes("icehogs") || teamLower.includes("gulls") ||
+    teamLower.includes("conquerors") || teamLower.includes("battalion") || teamLower.includes("generals") ||
+    teamLower.includes("petes") || teamLower.includes("frontenacs") || teamLower.includes("67's") ||
+    teamLower.includes("67s") || teamLower.includes("frontenac") || teamLower.includes("sagueneens") ||
+    teamLower.includes("saguenéens") || teamLower.includes("cataractes") || teamLower.includes("voltigeurs") ||
+    teamLower.includes("oceanic") || teamLower.includes("océanic") || teamLower.includes("remparts") ||
+    teamLower.includes("foreurs") || teamLower.includes("tigres") || teamLower.includes("armada") ||
+    teamLower.includes("phoenix") || teamLower.includes("huskies") || teamLower.includes("wheat kings") ||
+    teamLower.includes("hitmen") || teamLower.includes("oil kings") || teamLower.includes("blazers") ||
+    teamLower.includes("rockets") || teamLower.includes("hurricanes") || teamLower.includes("tigers") ||
+    teamLower.includes("warriors") || teamLower.includes("winterhawks") || teamLower.includes("raiders") ||
+    teamLower.includes("cougars") || teamLower.includes("rebels") || teamLower.includes("pats") ||
+    teamLower.includes("blades") || teamLower.includes("thunderbirds") || teamLower.includes("chiefs") ||
+    teamLower.includes("broncos") || teamLower.includes("americans") || teamLower.includes("giants") ||
+    teamLower.includes("royals") || teamLower.includes("wild") ||
+    // SHL Sweden keywords
+    teamLower.includes("brynäs") || teamLower.includes("frölunda") || teamLower.includes("färjestad") ||
+    teamLower.includes("hv71") || teamLower.includes("leksand") || teamLower.includes("linköping") ||
+    teamLower.includes("luleå") || teamLower.includes("malmö") || teamLower.includes("modo") ||
+    teamLower.includes("rögle") || teamLower.includes("skellefteå") || teamLower.includes("timrå") ||
+    teamLower.includes("växjö") || teamLower.includes("örebro") ||
+    // NL Switzerland keywords
+    teamLower.includes("ajoie") || teamLower.includes("ambrì") || teamLower.includes("sc bern") ||
+    teamLower.includes("biel-bienne") || teamLower.includes("davos") || teamLower.includes("genève-servette") ||
+    teamLower.includes("gottéron") || teamLower.includes("lausanne") || teamLower.includes("lugano") ||
+    teamLower.includes("scl tigers") || teamLower.includes("rapperswil-jona") || teamLower.includes("ev zug") ||
+    teamLower.includes("zsc lions") || teamLower.includes("kloten") ||
+    // Liiga Finland keywords
+    teamLower.includes("hifk") || teamLower.includes("hpk") || teamLower.includes("ilves") ||
+    teamLower.includes("jukurit") || teamLower.includes("jyp") || teamLower.includes("kalpa") ||
+    teamLower.includes("kookoo") || teamLower.includes("kärpät") || teamLower.includes("lukko") ||
+    (teamLower.includes("pelicans") && !teamLower.includes("orleans")) || teamLower.includes("saipa") ||
+    teamLower.includes("vaasan sport") || teamLower.includes("tappara") || teamLower.includes("tps") ||
+    teamLower.includes("ässät") || teamLower.includes("kiekko-espoo") ||
+    // Extraliga Czechia keywords
+    teamLower.includes("liberec") || teamLower.includes("mountfield hk") || teamLower.includes("karlovy vary") ||
+    teamLower.includes("kladno") || teamLower.includes("litvínov") || teamLower.includes("olomouc") ||
+    teamLower.includes("pardubice") || teamLower.includes("plzeň") || teamLower.includes("sparta praha") ||
+    teamLower.includes("třinec") || teamLower.includes("vítkovice") || teamLower.includes("české budějovice") ||
+    teamLower.includes("kometa brno") || teamLower.includes("boleslav") ||
+    // DEL Germany keywords
+    teamLower.includes("eisbären") || teamLower.includes("adler mannheim") || teamLower.includes("kölner haie") ||
+    teamLower.includes("red bull münchen") || teamLower.includes("düsseldorfer") || teamLower.includes("pinguins") ||
+    teamLower.includes("grizzlys") || teamLower.includes("roosters") || teamLower.includes("ingolstadt") ||
+    teamLower.includes("ice tigers") || teamLower.includes("wild wings") || teamLower.includes("straubing") ||
+    teamLower.includes("löwen frankfurt") || teamLower.includes("augsburger panther")
+  ) {
+    return "hockey";
+  }
+
+  if (
+    teamLower.includes("yankees") || teamLower.includes("red sox") || teamLower.includes("dodgers") ||
+    teamLower.includes("giants") || teamLower.includes("cubs") || teamLower.includes("cardinals") ||
+    teamLower.includes("blue jays") || teamLower.includes("mets") || teamLower.includes("astros") ||
+    teamLower.includes("braves") || teamLower.includes("athletics") || teamLower.includes("bisons") ||
+    teamLower.includes("ironpigs") || teamLower.includes("mud hens") || teamLower.includes("mariners") ||
+    teamLower.includes("rangers") || teamLower.includes("angels") || teamLower.includes("athletics") ||
+    teamLower.includes("astros") || teamLower.includes("guardians") || teamLower.includes("white sox") ||
+    teamLower.includes("tigers") || teamLower.includes("royals") || teamLower.includes("twins") ||
+    teamLower.includes("orioles") || teamLower.includes("rays") || teamLower.includes("blue jays") ||
+    teamLower.includes("reds") || teamLower.includes("brewers") || teamLower.includes("pirates") ||
+    teamLower.includes("phillies") || teamLower.includes("marlins") || teamLower.includes("nationals") ||
+    teamLower.includes("isotopes") || teamLower.includes("knights") || teamLower.includes("clippers") ||
+    teamLower.includes("bulls") || teamLower.includes("chihuahuas") || teamLower.includes("stripers") ||
+    teamLower.includes("indians") || teamLower.includes("jumbo shrimp") || teamLower.includes("aviators") ||
+    teamLower.includes("bats") || teamLower.includes("redbirds") || teamLower.includes("sounds") ||
+    teamLower.includes("tides") || teamLower.includes("comets") || teamLower.includes("storm chasers") ||
+    teamLower.includes("aces") || teamLower.includes("red wings") || teamLower.includes("express") ||
+    teamLower.includes("river cats") || teamLower.includes("bees") || teamLower.includes("railriders") ||
+    teamLower.includes("saints") || teamLower.includes("space cowboys") || teamLower.includes("rainiers") ||
+    teamLower.includes("worcester")
+  ) {
+    return "baseball";
+  }
+
+  if (
+    (teamLower.includes("lakers") && !teamLower.includes("växjö") && !teamLower.includes("rapperswil") && !teamLower.includes("jona")) ||
+    teamLower.includes("celtics") || teamLower.includes("warriors") ||
+    teamLower.includes("bulls") || teamLower.includes("knicks") || teamLower.includes("spurs") ||
+    teamLower.includes("heat") || teamLower.includes("bucks") || teamLower.includes("suns") ||
+    teamLower.includes("nets") || teamLower.includes("mavericks") || teamLower.includes("nuggets") ||
+    teamLower.includes("euroleague") || teamLower.includes("panathinaikos") || teamLower.includes("olympiacos") ||
+    teamLower.includes("maccabi") || teamLower.includes("real madrid basketball") || teamLower.includes("barcelona basketball") ||
+    teamLower.includes("fenerbahce") || teamLower.includes("partizan") || teamLower.includes("crvena zvezda") ||
+    teamLower.includes("virtus") || teamLower.includes("milano") || teamLower.includes("efes") ||
+    teamLower.includes("monaco") || teamLower.includes("baskonia") || teamLower.includes("valencia") ||
+    teamLower.includes("asvel") || teamLower.includes("alba") || teamLower.includes("bayern munich basketball") ||
+    teamLower.includes("clippers") || teamLower.includes("grizzlies") || (teamLower.includes("pelicans") && teamLower.includes("orleans")) ||
+    teamLower.includes("rockets") || teamLower.includes("timberwolves") || teamLower.includes("thunder") ||
+    teamLower.includes("blazers") || teamLower.includes("kings") || teamLower.includes("jazz") ||
+    teamLower.includes("cavaliers") || teamLower.includes("pistons") || teamLower.includes("pacers") ||
+    teamLower.includes("76ers") || teamLower.includes("raptors") || teamLower.includes("hawks") ||
+    teamLower.includes("hornets") || teamLower.includes("magic") || teamLower.includes("wizards")
+  ) {
+    return "basketball";
+  }
+
+  if (
+    teamLower.includes("cowboys") || teamLower.includes("patriots") || teamLower.includes("packers") ||
+    teamLower.includes("steelers") || teamLower.includes("49ers") || teamLower.includes("seahawks") ||
+    teamLower.includes("chiefs") || teamLower.includes("eagles") || (teamLower.includes("giants") && !teamLower.includes("düsseldorfer")) ||
+    teamLower.includes("roughriders") || teamLower.includes("argonauts") || teamLower.includes("blue bombers") ||
+    teamLower.includes("alouettes") || teamLower.includes("tiger-cats") || teamLower.includes("stampeders") ||
+    teamLower.includes("elks") || teamLower.includes("bc lions") || teamLower.includes("redblacks") ||
+    teamLower.includes("bills") || teamLower.includes("dolphins") || teamLower.includes("jets") ||
+    teamLower.includes("ravens") || teamLower.includes("bengals") || teamLower.includes("browns") ||
+    teamLower.includes("texans") || teamLower.includes("colts") || teamLower.includes("jaguars") ||
+    teamLower.includes("titans") || teamLower.includes("broncos") || teamLower.includes("raiders") ||
+    teamLower.includes("chargers") || teamLower.includes("commanders") || teamLower.includes("bears") ||
+    teamLower.includes("lions") || teamLower.includes("vikings") || teamLower.includes("saints") ||
+    teamLower.includes("buccaneers") || teamLower.includes("falcons") || teamLower.includes("panthers") ||
+    teamLower.includes("cardinals") || teamLower.includes("rams")
+  ) {
+    return "football";
+  }
+
+  if (
+    teamLower.includes("fc") || teamLower.includes("cf") || teamLower.includes("sc") ||
+    teamLower.includes("united") || teamLower.includes("city") || teamLower.includes("rovers") ||
+    teamLower.includes("wanderers") || teamLower.includes("lazio") || teamLower.includes("roma") ||
+    teamLower.includes("madrid") || teamLower.includes("barca") || teamLower.includes("barcelona") ||
+    teamLower.includes("inter") || teamLower.includes("milan") || teamLower.includes("bayern") ||
+    teamLower.includes("dortmund") || teamLower.includes("paris") || teamLower.includes("saint-germain") ||
+    teamLower.includes("ajax") || teamLower.includes("celtic") || teamLower.includes("rangers") ||
+    teamLower.includes("athletic") || teamLower.includes("real") || teamLower.includes("atletico") ||
+    teamLower.includes("sporting") || teamLower.includes("benfica") || teamLower.includes("porto") ||
+    teamLower.includes("arsenal") || teamLower.includes("chelsea") || teamLower.includes("liverpool") ||
+    teamLower.includes("tottenham") || teamLower.includes("spurs") || teamLower.includes("everton") ||
+    teamLower.includes("villa") || teamLower.includes("newcastle") || teamLower.includes("leeds") ||
+    teamLower.includes("leicester") || teamLower.includes("sevilla") || teamLower.includes("valencia") ||
+    teamLower.includes("sociedad") || teamLower.includes("villarreal") || teamLower.includes("napoli") ||
+    teamLower.includes("juventus") || teamLower.includes("fiorentina") || teamLower.includes("bologna") ||
+    teamLower.includes("atalanta") || teamLower.includes("monza") || teamLower.includes("leverkusen") ||
+    teamLower.includes("leipzig") || teamLower.includes("frankfurt") || teamLower.includes("freiburg") ||
+    teamLower.includes("marseille") || teamLower.includes("lens") || teamLower.includes("rennes") ||
+    teamLower.includes("lyon") || teamLower.includes("monaco") || teamLower.includes("lille") ||
+    teamLower.includes("sounders") || teamLower.includes("timbers") || teamLower.includes("earthquakes") ||
+    teamLower.includes("galaxy") || teamLower.includes("fire") || teamLower.includes("crew") ||
+    teamLower.includes("dynamo") || teamLower.includes("revolution") || teamLower.includes("red bulls") ||
+    teamLower.includes("nycfc") || teamLower.includes("lafc") || teamLower.includes("inter miami") ||
+    teamLower.includes("atlanta") || teamLower.includes("charlotte") || teamLower.includes("nashville") ||
+    teamLower.includes("st. louis") || teamLower.includes("orlando") || teamLower.includes("philadelphia") ||
+    teamLower.includes("toronto") || teamLower.includes("vancouver") || teamLower.includes("montreal") ||
+    teamLower.includes("tigres") || teamLower.includes("america") || teamLower.includes("chivas") ||
+    teamLower.includes("cruz azul") || teamLower.includes("pumas") || teamLower.includes("monterrey") ||
+    teamLower.includes("santos laguna") || teamLower.includes("toluca") || teamLower.includes("pachuca") ||
+    teamLower.includes("atlas") || teamLower.includes("tijuana") || teamLower.includes("queretaro") ||
+    teamLower.includes("necaxa") || teamLower.includes("mazatlan") || teamLower.includes("juarez") ||
+    teamLower.includes("puebla") || teamLower.includes("san luis") || teamLower.includes("leon")
+  ) {
+    return "soccer";
+  }
+
+  return "general";
+}
+
+// Filters custom/active sites list based on the team's sport
+function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
+  const targetSport = getSportForTeam(teamName);
+
+  const SPORT_SPECIFIC_OUTLETS: Record<string, string[]> = {
+    hockey: ["nhl.com", "chl.ca", "theqmjhl.ca", "theahl.com", "rds.ca", "tvasports.ca", "cbc.ca"],
+    baseball: ["mlb.com", "milb.com"],
+    basketball: ["nba.com", "euroleague.net", "eurohoops.net"],
+    football: ["nfl.com", "cfl.ca"],
+    soccer: [
+      "goal.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "mlssoccer.com", 
+      "marca.com", "as.com", "mundodeportivo.com", "gazzetta.it", "corrieredellosport.it", 
+      "tuttosport.com", "kicker.de", "bild.de", "sport1.de", "lequipe.fr", "francefootball.fr", "footmercato.net"
+    ]
+  };
+
+  return customSites.filter(site => {
+    const siteDomain = site.toLowerCase().trim();
+    // If not following a Soccer team (i.e. targetSport is not 'soccer'), then goal.com must not be searched
+    if (targetSport !== "soccer" && siteDomain.includes("goal.com")) {
+      return false;
+    }
+    if (targetSport === "general") {
+      return true;
+    }
+    const isSpecificToOtherSport = Object.entries(SPORT_SPECIFIC_OUTLETS).some(([sp, sites]) => {
+      return sp !== targetSport && sites.includes(siteDomain);
+    });
+    return !isSpecificToOtherSport;
+  });
+}
+
 // Sports news search API
 app.post("/api/news", async (req, res) => {
   try {
@@ -188,8 +399,9 @@ app.post("/api/news", async (req, res) => {
         try {
           // Prepare sites query
           let sitesFilter = "";
-          if (Array.isArray(customSites) && customSites.length > 0) {
-            const formattedSites = customSites
+          const relevantSites = filterSitesForTeam(team, customSites || []);
+          if (relevantSites.length > 0) {
+            const formattedSites = relevantSites
               .map((s: string) => s.trim())
               .filter((s: string) => s.length > 0)
               .map((s: string) => (s.startsWith("site:") ? s : `site:${s}`));

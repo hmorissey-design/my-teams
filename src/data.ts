@@ -177,6 +177,108 @@ export const SPORTS_PRESETS: SportPreset[] = [
           { name: "Utica Comets", display: "Utica" },
           { name: "Wilkes-Barre/Scranton Penguins", display: "Wilkes-Barre/Scranton" }
         ]
+      },
+      {
+        id: "shl",
+        name: "SHL (Sweden)",
+        teams: [
+          { name: "Brynäs IF", display: "Brynäs" },
+          { name: "Frölunda HC", display: "Frölunda" },
+          { name: "Färjestad BK", display: "Färjestad" },
+          { name: "HV71", display: "HV71" },
+          { name: "Leksands IF", display: "Leksands" },
+          { name: "Linköping HC", display: "Linköping" },
+          { name: "Luleå HF", display: "Luleå" },
+          { name: "Malmö Redhawks", display: "Malmö" },
+          { name: "MoDo Hockey", display: "MoDo" },
+          { name: "Rögle BK", display: "Rögle" },
+          { name: "Skellefteå AIK", display: "Skellefteå" },
+          { name: "Timrå IK", display: "Timrå" },
+          { name: "Växjö Lakers", display: "Växjö" },
+          { name: "Örebro HK", display: "Örebro" }
+        ]
+      },
+      {
+        id: "nl",
+        name: "National League (Switzerland)",
+        teams: [
+          { name: "HC Ajoie", display: "Ajoie" },
+          { name: "HC Ambrì-Piotta", display: "Ambrì-Piotta" },
+          { name: "SC Bern", display: "Bern" },
+          { name: "EHC Biel-Bienne", display: "Biel" },
+          { name: "HC Davos", display: "Davos" },
+          { name: "Genève-Servette HC", display: "Genève-Servette" },
+          { name: "Fribourg-Gottéron", display: "Fribourg" },
+          { name: "Lausanne HC", display: "Lausanne" },
+          { name: "HC Lugano", display: "Lugano" },
+          { name: "SCL Tigers", display: "SCL Tigers" },
+          { name: "Rapperswil-Jona Lakers", display: "Rapperswil" },
+          { name: "EV Zug", display: "Zug" },
+          { name: "ZSC Lions", display: "ZSC Lions" },
+          { name: "EHC Kloten", display: "Kloten" }
+        ]
+      },
+      {
+        id: "liiga",
+        name: "Liiga (Finland)",
+        teams: [
+          { name: "HIFK", display: "HIFK" },
+          { name: "HPK", display: "HPK" },
+          { name: "Ilves", display: "Ilves" },
+          { name: "Jukurit", display: "Jukurit" },
+          { name: "JYP", display: "JYP" },
+          { name: "KalPa", display: "KalPa" },
+          { name: "KooKoo", display: "KooKoo" },
+          { name: "Kärpät", display: "Kärpät" },
+          { name: "Lukko", display: "Lukko" },
+          { name: "Pelicans", display: "Lahti Pelicans" },
+          { name: "SaiPa", display: "SaiPa" },
+          { name: "Vaasan Sport", display: "Sport" },
+          { name: "Tappara", display: "Tappara" },
+          { name: "TPS", display: "TPS" },
+          { name: "Ässät", display: "Ässät" },
+          { name: "Kiekko-Espoo", display: "Kiekko-Espoo" }
+        ]
+      },
+      {
+        id: "extraliga",
+        name: "Extraliga (Czechia)",
+        teams: [
+          { name: "Bílí Tygři Liberec", display: "Liberec" },
+          { name: "Mountfield HK", display: "Mountfield HK" },
+          { name: "HC Energie Karlovy Vary", display: "Karlovy Vary" },
+          { name: "Rytíři Kladno", display: "Kladno" },
+          { name: "HC Litvínov", display: "Litvínov" },
+          { name: "HC Olomouc", display: "Olomouc" },
+          { name: "HC Dynamo Pardubice", display: "Pardubice" },
+          { name: "HC Škoda Plzeň", display: "Plzeň" },
+          { name: "HC Sparta Praha", display: "Sparta" },
+          { name: "HC Oceláři Třinec", display: "Třinec" },
+          { name: "HC Vítkovice Ridera", display: "Vítkovice" },
+          { name: "HC Motor České Budějovice", display: "České Budějovice" },
+          { name: "HC Kometa Brno", display: "Kometa Brno" },
+          { name: "BK Mladá Boleslav", display: "Mladá Boleslav" }
+        ]
+      },
+      {
+        id: "del",
+        name: "DEL (Germany)",
+        teams: [
+          { name: "Eisbären Berlin", display: "Berlin" },
+          { name: "Adler Mannheim", display: "Mannheim" },
+          { name: "Kölner Haie", display: "Kölner Haie" },
+          { name: "EHC Red Bull München", display: "München" },
+          { name: "Düsseldorfer EG", display: "Düsseldorfer EG" },
+          { name: "Fischtown Pinguins", display: "Fischtown" },
+          { name: "Grizzlys Wolfsburg", display: "Wolfsburg" },
+          { name: "Iserlohn Roosters", display: "Iserlohn" },
+          { name: "ERC Ingolstadt", display: "Ingolstadt" },
+          { name: "Nürnberg Ice Tigers", display: "Nürnberg" },
+          { name: "Schwenninger Wild Wings", display: "Schwenninger" },
+          { name: "Straubing Tigers", display: "Straubing" },
+          { name: "Löwen Frankfurt", display: "Löwen Frankfurt" },
+          { name: "Augsburger Panther", display: "Augsburger" }
+        ]
       }
     ]
   },
