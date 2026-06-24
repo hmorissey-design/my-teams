@@ -21,7 +21,7 @@ import {
   ArrowDown
 } from "lucide-react";
 import { TeamNews, AppSettings, AdData } from "./types";
-import { POPULAR_TEAMS, GOOGLE_ADMOB_ADS } from "./data";
+import { SPORTS_PRESETS, GOOGLE_ADMOB_ADS } from "./data";
 // @ts-ignore
 import appLogo from "./assets/images/sports_app_logo_1782243294195.jpg";
 
@@ -121,7 +121,43 @@ export default function App() {
   const [customSiteInput, setCustomSiteInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"teams" | "engine">("teams");
-   const [expandedLeagues, setExpandedLeagues] = useState<string[]>([]);
+  const [originalSettings, setOriginalSettings] = useState<AppSettings | null>(null);
+  const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
+
+  // Backup original settings when opening dialog
+  useEffect(() => {
+    if (showSettings && !originalSettings) {
+      setOriginalSettings(JSON.parse(JSON.stringify(settings)));
+    }
+  }, [showSettings]);
+
+  const handleCloseAttempt = () => {
+    const hasChanges = originalSettings && JSON.stringify(settings) !== JSON.stringify(originalSettings);
+    if (hasChanges) {
+      setShowUnsavedPrompt(true);
+    } else {
+      setShowSettings(false);
+      setOriginalSettings(null);
+    }
+  };
+
+  const handleSaveSettings = () => {
+    setOriginalSettings(null);
+    setShowSettings(false);
+    fetchNews(); // Trigger auto-refetch if timeline changed
+  };
+
+  const handleCancelExit = () => {
+    if (originalSettings) {
+      setSettings(originalSettings);
+    }
+    setShowSettings(false);
+    setOriginalSettings(null);
+    setShowUnsavedPrompt(false);
+  };
+  const [isSelectTeamsExpanded, setIsSelectTeamsExpanded] = useState(false);
+  const [expandedSports, setExpandedSports] = useState<string[]>(["hockey"]); // default to Hockey expanded
+  const [expandedLeagues, setExpandedLeagues] = useState<string[]>(["nhl"]);   // default to NHL expanded
   const [selectedTeamTab, setSelectedTeamTab] = useState<string>("All");
   const [isMyTrackedTeamsExpanded, setIsMyTrackedTeamsExpanded] = useState(false);
 
@@ -399,8 +435,9 @@ export default function App() {
   };
 
   // Crawl news from Express proxy
-  const fetchNews = async (forceTeams?: string[]) => {
+  const fetchNews = async (forceTeams?: string[], forceRecencyDays?: number) => {
     const targetTeams = forceTeams || settings.teams;
+    const targetRecency = typeof forceRecencyDays === "number" ? forceRecencyDays : settings.recencyDays;
     if (targetTeams.length === 0) {
       setErrorMsg("Please add at least one team to track news.");
       return;
@@ -417,7 +454,7 @@ export default function App() {
         },
         body: JSON.stringify({
           teams: targetTeams,
-          recencyDays: settings.recencyDays,
+          recencyDays: targetRecency,
           feedMode: settings.feedMode,
           customSites: settings.customSites,
         }),
@@ -463,7 +500,7 @@ export default function App() {
               const rawArticles = parseGoogleNewsRSSClient(xmlText);
               let articles = rawArticles.filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url));
 
-              const days = Math.min(Math.max(Number(settings.recencyDays) || 1, 1), 2);
+              const days = Math.min(Math.max(Number(targetRecency) || 1, 1), 2);
               const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
               let filteredArticles = articles.filter((art) => art.timestamp >= cutoffTime);
 
@@ -528,13 +565,13 @@ export default function App() {
   };
 
   // Completely wipe local cache and trigger a crisp recrawl of the chosen teams
-  const clearFeedCache = (options?: { fetchAfter?: boolean }) => {
+  const clearFeedCache = (options?: { fetchAfter?: boolean; forceRecencyDays?: number }) => {
     setNewsCache({});
     localStorage.removeItem("my_teams_newscache");
     setErrorMsg(null);
     if (options?.fetchAfter !== false) {
       setTimeout(() => {
-        fetchNews();
+        fetchNews(undefined, options?.forceRecencyDays);
       }, 50);
     }
   };
@@ -604,6 +641,8 @@ export default function App() {
       ...prev,
       recencyDays: days
     }));
+    // Clear cache immediately and force a fresh fetch with the new recency value
+    clearFeedCache({ fetchAfter: true, forceRecencyDays: days });
   };
 
   return (
@@ -1080,7 +1119,7 @@ export default function App() {
               </div>
               <button 
                 type="button"
-                onClick={() => setShowSettings(false)}
+                onClick={handleCloseAttempt}
                 className={`p-1.5 rounded-lg border transition-colors ${
                   settings.darkMode 
                     ? 'border-slate-800 hover:bg-slate-800 text-slate-400' 
@@ -1090,569 +1129,613 @@ export default function App() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Modal Tabs Selection */}
-            <div className={`flex border-b pb-1 gap-2 shrink-0 ${settings.darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-              <button
-                type="button"
-                onClick={() => setSettingsTab("teams")}
-                className={`flex-1 pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 ${
-                  settingsTab === "teams"
-                    ? "border-emerald-500 text-emerald-400 font-extrabold"
-                    : settings.darkMode 
-                      ? "border-transparent text-slate-500 hover:text-slate-300"
-                      : "border-transparent text-slate-450 hover:text-slate-600"
-                }`}
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>🏆 Team Choices</span>
-              </button>
+                  {/* Scrollable Settings Panel */}
+            <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
               
-              <button
-                type="button"
-                onClick={() => setSettingsTab("engine")}
-                className={`flex-1 pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 ${
-                  settingsTab === "engine"
-                    ? "border-emerald-500 text-emerald-400 font-extrabold"
-                    : settings.darkMode 
-                      ? "border-transparent text-slate-500 hover:text-slate-300"
-                      : "border-transparent text-slate-450 hover:text-slate-600"
-                }`}
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>⚙️ Outlets & Preferences</span>
-              </button>
-            </div>
-
-            {/* TAB CONTENT: TEAMS PRESETS */}
-            {settingsTab === "teams" ? (
-              <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
-                {/* Intro guide */}
-                <div className={`p-3 rounded-xl text-xs border ${
-                  settings.darkMode ? 'bg-slate-950/25 border-slate-850 text-slate-400' : 'bg-slate-55 border-slate-200 text-slate-650'
-                }`}>
-                  Select from regional leagues below to instantly add them to your tracking feed. Active tracked teams are highlighted in green.
-                </div>
-
-                {/* Popular Teams categories - Expandable Accordion System */}
-                <div className="space-y-2.5">
-                  <span className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    settings.darkMode ? 'text-slate-400' : 'text-slate-500'
-                  }`}>
-                    Select Team(s) to Follow (By Sports League)
+              {/* SECTION 1: COLLAPSIBLE SELECT TEAMS TO FOLLOW */}
+              <div className={`rounded-xl border p-1.5 ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setIsSelectTeamsExpanded(!isSelectTeamsExpanded)}
+                  className="w-full px-3 py-2 flex items-center justify-between text-left font-bold text-xs uppercase tracking-wider text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    {isSelectTeamsExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-emerald-500 shrink-0" />
+                    )}
+                    🏆 Select Teams to Follow
                   </span>
+                  <span className="text-[10px] text-slate-500 font-mono">By Sport & League</span>
+                </button>
 
-                  <div className="space-y-2">
-                    {POPULAR_TEAMS.map((group) => {
-                      const isExpanded = expandedLeagues.includes(group.category);
-                      const followedCount = group.teams.filter(t => settings.teams.includes(t.name)).length;
+                {isSelectTeamsExpanded && (
+                  <div className="p-2 space-y-2.5 border-t border-slate-800/30 mt-1">
+                    {SPORTS_PRESETS.map((sport) => {
+                      const isSportExpanded = expandedSports.includes(sport.id);
+                      const sportFollowedCount = sport.leagues.reduce((acc, league) => {
+                        return acc + league.teams.filter(t => settings.teams.includes(t.name)).length;
+                      }, 0);
 
                       return (
-                        <div 
-                          key={group.category} 
-                          className={`rounded-xl border transition-all overflow-hidden ${
-                            isExpanded 
-                              ? settings.darkMode 
-                                ? 'bg-slate-950/40 border-slate-800' 
-                                : 'bg-slate-50/85 border-slate-300'
-                              : settings.darkMode 
-                                ? 'bg-slate-900 border-slate-850 hover:bg-slate-850' 
-                                : 'bg-white border-slate-200 hover:bg-slate-50 shadow-xs'
-                          }`}
-                        >
-                          {/* League Header Toggle Button */}
+                        <div key={sport.id} className={`rounded-lg overflow-hidden border ${
+                          settings.darkMode ? 'border-slate-850 bg-slate-900/40' : 'border-slate-200 bg-white shadow-xs'
+                        }`}>
+                          {/* Sport Level Header */}
                           <button
                             type="button"
                             onClick={() => {
-                              setExpandedLeagues(prev => 
-                                prev.includes(group.category) 
-                                  ? prev.filter(c => c !== group.category) 
-                                  : [...prev, group.category]
+                              setExpandedSports(prev => 
+                                prev.includes(sport.id) 
+                                  ? prev.filter(id => id !== sport.id) 
+                                  : [...prev, sport.id]
                               );
                             }}
-                            className="w-full px-4 py-3 flex items-center justify-between text-left transition-colors font-semibold"
+                            className={`w-full px-3.5 py-2.5 flex items-center justify-between text-left transition-colors font-semibold text-xs ${
+                              settings.darkMode ? 'hover:bg-slate-850 text-slate-200' : 'hover:bg-slate-50 text-slate-800'
+                            }`}
                           >
-                            <div className="flex items-center gap-2.5">
-                              <span className={`text-xs font-black uppercase tracking-wider ${
-                                settings.darkMode ? 'text-slate-200' : 'text-slate-800'
-                              }`}>
-                                {group.category}
-                              </span>
-                              
-                              {followedCount > 0 && (
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                                  settings.darkMode 
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
-                                    : 'bg-emerald-55 text-emerald-700 border border-emerald-250 shadow-xs'
-                                }`}>
-                                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" />
-                                  <span>{followedCount} tracked</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">{sport.icon}</span>
+                              <span className="font-extrabold uppercase tracking-wide">{sport.name}</span>
+                              {sportFollowedCount > 0 && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                                  {sportFollowedCount} active
                                 </span>
                               )}
                             </div>
-                            
-                            <div className={`p-1 rounded-md transition-all ${
-                              settings.darkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'
-                            }`}>
-                              {isExpanded ? (
-                                <ChevronDown className="w-4 h-4" />
+                            <div>
+                              {isSportExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                               ) : (
-                                <ChevronRight className="w-4 h-4" />
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                               )}
                             </div>
                           </button>
 
-                          {/* Expanded list of teams */}
-                          {isExpanded && (
-                            <div className={`p-4 pt-1 border-t ${
-                              settings.darkMode ? 'border-slate-850 bg-slate-950/20' : 'border-slate-200/80 bg-white'
+                          {/* League Level Sub-Accordion */}
+                          {isSportExpanded && (
+                            <div className={`p-2 space-y-2 border-t ${
+                              settings.darkMode ? 'border-slate-850/60 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
                             }`}>
-                              <div className="grid grid-cols-2 gap-1.5 mt-2 max-h-64 overflow-y-auto pr-1">
-                                {group.teams.map((item) => {
-                                  const isFollowed = settings.teams.includes(item.name);
-                                  return (
+                              {sport.leagues.map((league) => {
+                                const isLeagueExpanded = expandedLeagues.includes(league.id);
+                                const leagueFollowedCount = league.teams.filter(t => settings.teams.includes(t.name)).length;
+
+                                return (
+                                  <div key={league.id} className={`rounded-lg border overflow-hidden ${
+                                    settings.darkMode ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white shadow-xs'
+                                  }`}>
+                                    {/* League level header */}
                                     <button
-                                      key={item.name}
                                       type="button"
-                                      onClick={() => isFollowed ? handleRemoveTeam(item.name) : handleAddTeam(item.name)}
-                                      className={`text-[11px] px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center justify-between gap-1 active:scale-95 border ${
-                                        isFollowed 
-                                          ? settings.darkMode
-                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/35 hover:bg-emerald-500/30' 
-                                            : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm'
-                                          : settings.darkMode 
-                                            ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' 
-                                            : 'bg-white border-slate-250 text-slate-600 hover:bg-slate-100 shadow-sm'
+                                      onClick={() => {
+                                        setExpandedLeagues(prev =>
+                                          prev.includes(league.id) ? prev.filter(id => id !== league.id) : [...prev, league.id]
+                                        );
+                                      }}
+                                      className={`w-full px-3 py-2 flex items-center justify-between text-left transition-colors font-semibold text-[11px] ${
+                                        settings.darkMode ? 'hover:bg-slate-850 text-slate-300' : 'hover:bg-slate-100 text-slate-750'
                                       }`}
                                     >
-                                      <span className="truncate">{item.display}</span>
-                                      {isFollowed ? <Check className="w-3 h-3 shrink-0" /> : <Plus className="w-3 h-3 shrink-0 opacity-40" />}
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold">{league.name}</span>
+                                        {leagueFollowedCount > 0 && (
+                                          <span className="text-[8px] font-mono font-black px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400">
+                                            {leagueFollowedCount}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div>
+                                        {isLeagueExpanded ? (
+                                          <ChevronDown className="w-3 h-3 text-slate-400" />
+                                        ) : (
+                                          <ChevronRight className="w-3 h-3 text-slate-400" />
+                                        )}
+                                      </div>
                                     </button>
-                                  );
-                                })}
-                              </div>
+
+                                    {/* Team Grid */}
+                                    {isLeagueExpanded && (
+                                      <div className={`p-3 border-t grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto ${
+                                        settings.darkMode ? 'border-slate-800 bg-slate-950/30' : 'border-slate-150 bg-slate-50/45'
+                                      }`}>
+                                        {league.teams.map((item) => {
+                                          const isFollowed = settings.teams.includes(item.name);
+                                          return (
+                                            <button
+                                              key={item.name}
+                                              type="button"
+                                              onClick={() => isFollowed ? handleRemoveTeam(item.name) : handleAddTeam(item.name)}
+                                              className={`text-[10px] px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center justify-between gap-1 active:scale-95 border ${
+                                                isFollowed
+                                                  ? settings.darkMode
+                                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/35 hover:bg-emerald-500/30'
+                                                    : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm'
+                                                  : settings.darkMode
+                                                    ? 'bg-slate-900 border-slate-800 text-slate-450 hover:bg-slate-850'
+                                                    : 'bg-white border-slate-250 text-slate-600 hover:bg-slate-100 shadow-sm'
+                                              }`}
+                                            >
+                                              <span className="truncate">{item.display}</span>
+                                              {isFollowed ? (
+                                                <Check className="w-3 h-3 shrink-0 text-emerald-400" />
+                                              ) : (
+                                                <Plus className="w-3 h-3 shrink-0 opacity-40" />
+                                              )}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                </div>
+                )}
+              </div>
 
-                {/* Tracking stats / interactive preview block */}
-                <div className={`p-4 rounded-xl border space-y-3 mt-2 ${
-                  settings.darkMode ? 'bg-slate-950/40 border-slate-850' : 'bg-slate-50 border-slate-200 shadow-inner'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-black uppercase tracking-wider block ${
-                      settings.darkMode ? 'text-slate-400' : 'text-slate-500'
-                    }`}>Currently Tracked Teams & Order ({settings.teams.length})</span>
-                    {settings.teams.length > 1 && (
-                      <span className="text-[9px] text-slate-500 font-medium">Use arrows to prioritize</span>
-                    )}
-                  </div>
-                  
-                  {settings.teams.length === 0 ? (
-                    <span className="text-xs text-slate-500 italic block">No teams currently tracked. Select a league preset above or use the sidebar form.</span>
-                  ) : (
-                    <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
-                      {settings.teams.map((t, index) => (
-                        <div 
-                          key={t} 
-                          className={`flex items-center justify-between p-2 rounded-xl border text-xs font-bold transition-all ${
-                            settings.darkMode 
-                              ? 'bg-slate-900 border-slate-800 text-slate-200' 
-                              : 'bg-white border-slate-200 text-slate-700 shadow-sm'
-                          }`}
-                        >
-                          <span className="truncate flex-1 pr-2">{t}</span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {/* Move Up */}
-                            <button
-                              type="button"
-                              onClick={() => handleMoveTeam(index, 'up')}
-                              disabled={index === 0}
-                              className={`p-1 rounded transition-colors ${
-                                index === 0 
-                                  ? 'text-slate-600 cursor-not-allowed opacity-30' 
-                                  : settings.darkMode ? 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
-                              }`}
-                              title="Move team up (higher priority)"
-                            >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            {/* Move Down */}
-                            <button
-                              type="button"
-                              onClick={() => handleMoveTeam(index, 'down')}
-                              disabled={index === settings.teams.length - 1}
-                              className={`p-1 rounded transition-colors ${
-                                index === settings.teams.length - 1 
-                                  ? 'text-slate-600 cursor-not-allowed opacity-30' 
-                                  : settings.darkMode ? 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
-                              }`}
-                              title="Move team down (lower priority)"
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            {/* Remove */}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTeam(t)}
-                              className="p-1 rounded text-rose-500 hover:bg-rose-500/10 hover:text-rose-450 transition-colors ml-1"
-                              title={`Unfollow ${t}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              {/* SECTION 2: CURRENTLY TRACKED TEAMS & ORDER */}
+              <div className={`p-4 rounded-xl border space-y-3 ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[11px] font-black uppercase tracking-wider block ${
+                    settings.darkMode ? 'text-slate-400' : 'text-slate-500'
+                  }`}>Currently Tracked Teams & Priority ({settings.teams.length})</span>
+                  {settings.teams.length > 1 && (
+                    <span className="text-[9px] text-slate-500 font-medium">Use arrows to prioritize</span>
                   )}
                 </div>
-              </div>
-            ) : (
-              /* TAB CONTENT: GENERAL ENGINE OUTLETS & PREFERENCES */
-              <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
                 
-                {/* Target Sports Web Outlets */}
-                <div className="space-y-2.5">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
-                    Target Sports Web Outlets to Display News From
-                  </label>
-                  
-                  <div className="space-y-3">
-                    {/* Global & NA */}
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                        Global & North America
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
-                          const isActive = settings.customSites.includes(site);
-                          return (
-                            <button
-                              key={site}
-                              type="button"
-                              onClick={() => {
-                                setSettings(p => {
-                                  const updated = isActive 
-                                    ? p.customSites.filter(s => s !== site)
-                                    : [...p.customSites, site];
-                                  return { ...p, customSites: updated };
-                                });
-                              }}
-                              className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
-                                isActive
-                                  ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                                  : settings.darkMode
-                                    ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                    : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
-                              }`}
-                            >
-                              {isActive ? "✓ " : ""}{site}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* UK & English Europe */}
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                        United Kingdom & Global Soccer
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {["skysports.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "goal.com"].map((site) => {
-                          const isActive = settings.customSites.includes(site);
-                          return (
-                            <button
-                              key={site}
-                              type="button"
-                              onClick={() => {
-                                setSettings(p => {
-                                  const updated = isActive 
-                                    ? p.customSites.filter(s => s !== site)
-                                    : [...p.customSites, site];
-                                  return { ...p, customSites: updated };
-                                });
-                              }}
-                              className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
-                                isActive
-                                  ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                                  : settings.darkMode
-                                    ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                    : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
-                              }`}
-                            >
-                              {isActive ? "✓ " : ""}{site}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Continental Europe */}
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                        Continental Europe (Local News & Newspapers)
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {[
-                          "marca.com", "as.com", "mundodeportivo.com", // Spain
-                          "gazzetta.it", "corrieredellosport.it", "tuttosport.com", // Italy
-                          "kicker.de", "bild.de", "sport1.de", // Germany
-                          "lequipe.fr", "francefootball.fr", "footmercato.net" // France
-                        ].map((site) => {
-                          const isActive = settings.customSites.includes(site);
-                          return (
-                            <button
-                              key={site}
-                              type="button"
-                              onClick={() => {
-                                setSettings(p => {
-                                  const updated = isActive 
-                                    ? p.customSites.filter(s => s !== site)
-                                    : [...p.customSites, site];
-                                  return { ...p, customSites: updated };
-                                });
-                              }}
-                              className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
-                                isActive
-                                  ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                                  : settings.darkMode
-                                    ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                    : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
-                              }`}
-                            >
-                                {isActive ? "✓ " : ""}{site}
-                              </button>
-                            );
-                          })}
+                {settings.teams.length === 0 ? (
+                  <span className="text-xs text-slate-500 italic block">No teams currently tracked. Select a league preset above or use the sidebar form.</span>
+                ) : (
+                  <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                    {settings.teams.map((t, index) => (
+                      <div 
+                        key={t} 
+                        className={`flex items-center justify-between p-2 rounded-xl border text-xs font-bold transition-all ${
+                          settings.darkMode 
+                            ? 'bg-slate-900 border-slate-800 text-slate-200' 
+                            : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                        }`}
+                      >
+                        <span className="truncate flex-1 pr-2">{t}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Move Up */}
+                          <button
+                            type="button"
+                            onClick={() => handleMoveTeam(index, 'up')}
+                            disabled={index === 0}
+                            className={`p-1 rounded transition-colors ${
+                              index === 0 
+                                ? 'text-slate-600 cursor-not-allowed opacity-30' 
+                                : settings.darkMode ? 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
+                            }`}
+                            title="Move team up"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          {/* Move Down */}
+                          <button
+                            type="button"
+                            onClick={() => handleMoveTeam(index, 'down')}
+                            disabled={index === settings.teams.length - 1}
+                            className={`p-1 rounded transition-colors ${
+                              index === settings.teams.length - 1 
+                                ? 'text-slate-600 cursor-not-allowed opacity-30' 
+                                : settings.darkMode ? 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
+                            }`}
+                            title="Move team down"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          {/* Remove */}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTeam(t)}
+                            className="p-1 rounded text-rose-500 hover:bg-rose-500/10 hover:text-rose-450 transition-colors ml-1"
+                            title={`Unfollow ${t}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
-                    </div>
-
-                  {/* Add Custom Outlets */}
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="text"
-                      placeholder="Type any custom news domain (e.g. goal.com, skysports.com)..."
-                      value={customSiteInput}
-                      onChange={(e) => setCustomSiteInput(e.target.value)}
-                      className={`flex-1 text-xs px-3 py-2 rounded-xl border outline-none font-mono ${
-                        settings.darkMode
-                          ? "bg-slate-950 border-slate-800 text-slate-100 focus:border-slate-750"
-                          : "bg-slate-50 border-slate-200 text-slate-850 focus:border-slate-300"
-                      }`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const clean = customSiteInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-                        if (clean && !settings.customSites.includes(clean)) {
-                          setSettings(p => ({ ...p, customSites: [...p.customSites, clean] }));
-                        }
-                        setCustomSiteInput("");
-                      }}
-                      className="px-3 bg-slate-800 text-slate-100 rounded-xl hover:bg-slate-700 text-xs font-bold font-mono transition-all"
-                    >
-                      + Add
-                    </button>
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  {settings.customSites.length > 0 && (
-                    <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-24 overflow-y-auto ${
-                      settings.darkMode ? 'bg-slate-950/30 border-slate-855' : 'bg-slate-50 border-slate-200 shadow-inner'
-                    }`}>
-                      <div className="flex justify-between items-center w-full mb-1">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase block">Currently active outlets filter ({settings.customSites.length}):</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSettings(p => ({
-                              ...p,
-                              customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"]
-                            }));
-                          }}
-                          className="text-[9px] text-emerald-500 hover:text-emerald-400 font-bold transition-all"
-                        >
-                          Reset to Defaults
-                        </button>
-                      </div>
-                      {settings.customSites.map(s => (
-                        <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
-                          settings.darkMode ? 'bg-slate-800 text-slate-350' : 'bg-white border border-slate-200 text-slate-700 shadow-sm'
-                        }`}>
-                          {s}
-                          <button 
-                            type="button"
-                            onClick={() => setSettings(p => ({ ...p, customSites: p.customSites.filter(out => out !== s) }))}
-                            className="text-red-500 hover:text-red-400 ml-1 select-none font-bold font-sans text-xs"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Recency Control */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide flex justify-between">
-                    <span>News Crawl Lookback Window</span>
-                    <span className="text-emerald-400 font-mono text-sm font-semibold">{settings.recencyDays} {settings.recencyDays === 1 ? 'day' : 'days'}</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="2"
-                    value={settings.recencyDays}
-                    onChange={(e) => handleRecencyChange(Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-805 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                  />
-                  <div className="flex justify-between text-[11px] text-slate-500">
-                    <span>1 Day (Ultra-Fresh)</span>
-                    <span>2 Days (Maximum)</span>
-                  </div>
-                </div>
-
-                {/* News Sorting Mode Control */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
-                    News Sorting Mode
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSettings(prev => ({ ...prev, sortBy: "recent" }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
-                        settings.sortBy === "recent"
-                          ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
-                          : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
-                      }`}
-                    >
-                      <span className="text-xs">⚡ Latest Activity</span>
-                      <span className="text-[9px] font-medium text-slate-500">Newest headline first</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSettings(prev => ({ ...prev, sortBy: "default" }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
-                        settings.sortBy === "default"
-                          ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
-                          : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
-                      }`}
-                    >
-                      <span className="text-xs">📌 Custom Order</span>
-                      <span className="text-[9px] font-medium text-slate-500">Use team list priority order</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Appearance Toggle */}
-                <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                  settings.darkMode ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
-                }`}>
-                  <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase block">Dark Mode</span>
-                    <span className="text-[11px] text-slate-500">Toggle elegant neon dark vs workspace crisp light mode.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={toggleDarkMode}
-                    className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-bold ${
-                      settings.darkMode 
-                        ? 'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800' 
-                        : 'bg-white border-slate-305 text-slate-705 hover:bg-slate-100 shadow-sm'
-                    }`}
-                  >
-                    {settings.darkMode ? (
-                      <>
-                        <Moon className="w-4 h-4 text-emerald-400" />
-                        <span>Dark Theme</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sun className="w-4 h-4 text-amber-500" />
-                        <span>Light Theme</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Clear Viewed Articles History */}
-                <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                  settings.darkMode ? 'bg-slate-950/45 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
-                }`}>
-                  <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase block">Clear Read History</span>
-                    <span className="text-[11px] text-slate-500 block">Reset color styling for already clicked article links.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewedLinks([]);
-                      localStorage.removeItem("my_teams_viewed_links");
-                    }}
-                    disabled={viewedLinks.length === 0}
-                    className={`p-2.5 rounded-xl border transition-all text-xs font-bold shrink-0 ${
-                      viewedLinks.length === 0
-                        ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-600'
-                        : settings.darkMode 
-                          ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20' 
-                          : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 shadow-sm'
-                    }`}
-                  >
-                    Clear ({viewedLinks.length})
-                  </button>
-                </div>
-
-                {/* Cache Reset section in Settings */}
-                <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                  settings.darkMode ? 'bg-slate-950/45 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
-                }`}>
-                  <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase block">Reset Live Feed Cache</span>
-                    <span className="text-[11px] text-slate-550 block">Wipe locally saved stories and trigger a clean filter feed.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearFeedCache();
-                      setShowSettings(false);
-                    }}
-                    className="p-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shadow-sm shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Reset Cache</span>
-                  </button>
-                </div>
-
-                {/* Google Play Standalone Notice */}
-                <div className={`p-4 rounded-xl text-left border flex gap-3 ${settings.darkMode ? 'bg-slate-950 border-slate-850' : 'bg-slate-50 border-slate-200'}`}>
-                  <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-xs font-bold block uppercase tracking-wider text-slate-400">Play Store Standalone Safe</span>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5 font-sans">
-                      This news app stores all team configurations and crawl cache locally on your device. It does not require any third-party auth, account registrations, cookies, or telemetry tracking, fully complying with Google Play Developer Policies.
-                    </p>
-                  </div>
+              {/* SECTION 3: NEWS CRAWL LOOKBACK WINDOW */}
+              <div className={`p-4 rounded-xl border space-y-3.5 ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+              }`}>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide flex justify-between">
+                  <span>News Crawl Lookback Window</span>
+                  <span className="text-emerald-400 font-mono text-sm font-semibold">{settings.recencyDays} {settings.recencyDays === 1 ? 'day' : 'days'}</span>
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="2"
+                  value={settings.recencyDays}
+                  onChange={(e) => handleRecencyChange(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-805 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                />
+                <div className="flex justify-between text-[11px] text-slate-500">
+                  <span>1 Day (Ultra-Fresh)</span>
+                  <span>2 Days (Maximum)</span>
                 </div>
               </div>
-            )}
+
+              {/* SECTION 4: OUTLETS & CUSTOM OUTLETS FILTER */}
+              <div className={`p-4 rounded-xl border space-y-3.5 ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+              }`}>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
+                  Target Sports Web Outlets to Display News From
+                </label>
+                
+                <div className="space-y-3">
+                  {/* Global & NA */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      Global & North America
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
+                        const isActive = settings.customSites.includes(site);
+                        return (
+                          <button
+                            key={site}
+                            type="button"
+                            onClick={() => {
+                              setSettings(p => {
+                                const updated = isActive 
+                                  ? p.customSites.filter(s => s !== site)
+                                  : [...p.customSites, site];
+                                return { ...p, customSites: updated };
+                              });
+                            }}
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                              isActive
+                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
+                                : settings.darkMode
+                                  ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
+                                  : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            {isActive ? "✓ " : ""}{site}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* UK & English Europe */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      United Kingdom & Global Soccer
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["skysports.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "goal.com"].map((site) => {
+                        const isActive = settings.customSites.includes(site);
+                        return (
+                          <button
+                            key={site}
+                            type="button"
+                            onClick={() => {
+                              setSettings(p => {
+                                const updated = isActive 
+                                  ? p.customSites.filter(s => s !== site)
+                                  : [...p.customSites, site];
+                                return { ...p, customSites: updated };
+                              });
+                            }}
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                              isActive
+                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
+                                : settings.darkMode
+                                  ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
+                                  : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            {isActive ? "✓ " : ""}{site}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Continental Europe */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      Continental Europe (Local News & Newspapers)
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "marca.com", "as.com", "mundodeportivo.com", 
+                        "gazzetta.it", "corrieredellosport.it", "tuttosport.com", 
+                        "kicker.de", "bild.de", "sport1.de", 
+                        "lequipe.fr", "francefootball.fr", "footmercato.net"
+                      ].map((site) => {
+                        const isActive = settings.customSites.includes(site);
+                        return (
+                          <button
+                            key={site}
+                            type="button"
+                            onClick={() => {
+                              setSettings(p => {
+                                const updated = isActive 
+                                  ? p.customSites.filter(s => s !== site)
+                                  : [...p.customSites, site];
+                                return { ...p, customSites: updated };
+                              });
+                            }}
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                              isActive
+                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
+                                : settings.darkMode
+                                  ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
+                                  : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            {isActive ? "✓ " : ""}{site}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add Custom Outlets */}
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    placeholder="Type custom news domain (e.g. nfl.com)..."
+                    value={customSiteInput}
+                    onChange={(e) => setCustomSiteInput(e.target.value)}
+                    className={`flex-1 text-xs px-3 py-2 rounded-xl border outline-none font-mono ${
+                      settings.darkMode
+                        ? "bg-slate-950 border-slate-800 text-slate-100 focus:border-slate-750"
+                        : "bg-slate-50 border-slate-200 text-slate-850 focus:border-slate-300"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const clean = customSiteInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+                      if (clean && !settings.customSites.includes(clean)) {
+                        setSettings(p => ({ ...p, customSites: [...p.customSites, clean] }));
+                      }
+                      setCustomSiteInput("");
+                    }}
+                    className="px-3 bg-slate-800 text-slate-100 rounded-xl hover:bg-slate-700 text-xs font-bold font-mono transition-all"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {settings.customSites.length > 0 && (
+                  <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-24 overflow-y-auto ${
+                    settings.darkMode ? 'bg-slate-950/30 border-slate-855' : 'bg-slate-50 border-slate-200 shadow-inner'
+                  }`}>
+                    <div className="flex justify-between items-center w-full mb-1">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase block">Currently active outlets filter ({settings.customSites.length}):</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettings(p => ({
+                            ...p,
+                            customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"]
+                          }));
+                        }}
+                        className="text-[9px] text-emerald-500 hover:text-emerald-400 font-bold transition-all"
+                      >
+                        Reset to Defaults
+                      </button>
+                    </div>
+                    {settings.customSites.map(s => (
+                      <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
+                        settings.darkMode ? 'bg-slate-800 text-slate-350' : 'bg-white border border-slate-200 text-slate-700 shadow-sm'
+                      }`}>
+                        {s}
+                        <button 
+                          type="button"
+                          onClick={() => setSettings(p => ({ ...p, customSites: p.customSites.filter(out => out !== s) }))}
+                          className="text-red-500 hover:text-red-400 ml-1 select-none font-bold font-sans text-xs"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 5: NEWS SORTING MODE */}
+              <div className={`p-4 rounded-xl border space-y-3 ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+              }`}>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
+                  News Sorting Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSettings(prev => ({ ...prev, sortBy: "recent" }))}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
+                      settings.sortBy === "recent"
+                        ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
+                        : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
+                    }`}
+                  >
+                    <span className="text-xs">⚡ Latest Activity</span>
+                    <span className="text-[9px] font-medium text-slate-500">Newest headline first</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettings(prev => ({ ...prev, sortBy: "default" }))}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
+                      settings.sortBy === "default"
+                        ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
+                        : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
+                    }`}
+                  >
+                    <span className="text-xs">📌 Custom Order</span>
+                    <span className="text-[9px] font-medium text-slate-500">Use team list priority order</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION 6: APPEARANCE TOGGLE */}
+              <div className={`p-4 rounded-xl border flex items-center justify-between ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
+              }`}>
+                <div>
+                  <span className="text-xs font-bold text-slate-400 uppercase block">Dark Mode</span>
+                  <span className="text-[11px] text-slate-550">Toggle elegant neon dark vs workspace crisp light mode.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleDarkMode}
+                  className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-bold ${
+                    settings.darkMode 
+                      ? 'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800' 
+                      : 'bg-white border-slate-305 text-slate-705 hover:bg-slate-100 shadow-sm'
+                  }`}
+                >
+                  {settings.darkMode ? (
+                    <>
+                      <Moon className="w-4 h-4 text-emerald-400" />
+                      <span>Dark Theme</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sun className="w-4 h-4 text-amber-500" />
+                      <span>Light Theme</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* SECTION 7: READ HISTORY */}
+              <div className={`p-4 rounded-xl border flex items-center justify-between ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
+              }`}>
+                <div>
+                  <span className="text-xs font-bold text-slate-400 uppercase block">Clear Read History</span>
+                  <span className="text-[11px] text-slate-550 block">Reset color styling for already clicked article links.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewedLinks([]);
+                    localStorage.removeItem("my_teams_viewed_links");
+                  }}
+                  disabled={viewedLinks.length === 0}
+                  className={`p-2.5 rounded-xl border transition-all text-xs font-bold shrink-0 ${
+                    viewedLinks.length === 0
+                      ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-600'
+                      : settings.darkMode 
+                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20' 
+                        : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 shadow-sm'
+                  }`}
+                >
+                  Clear ({viewedLinks.length})
+                </button>
+              </div>
+
+              {/* SECTION 8: FEED CACHE RESET */}
+              <div className={`p-4 rounded-xl border flex items-center justify-between ${
+                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
+              }`}>
+                <div>
+                  <span className="text-xs font-bold text-slate-400 uppercase block">Reset Live Feed Cache</span>
+                  <span className="text-[11px] text-slate-550 block">Wipe locally saved stories and trigger a clean filter feed.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearFeedCache();
+                    setOriginalSettings(null);
+                    setShowSettings(false);
+                  }}
+                  className="p-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shadow-sm shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset Cache</span>
+                </button>
+              </div>
+
+              {/* Play Store Safe Notice */}
+              <div className={`p-4 rounded-xl text-left border flex gap-3 ${settings.darkMode ? 'bg-slate-950 border-slate-850' : 'bg-slate-50 border-slate-200'}`}>
+                <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-xs font-bold block uppercase tracking-wider text-slate-400">Play Store Standalone Safe</span>
+                  <p className="text-[11px] text-slate-500 leading-normal mt-0.5 font-sans">
+                    This news app stores all team configurations and crawl cache locally on your device. It does not require any third-party auth, account registrations, cookies, or telemetry tracking, fully complying with Google Play Developer Policies.
+                  </p>
+                </div>
+              </div>
+
+            </div>
 
             {/* Close Button */}
             <button
-              onClick={() => {
-                setShowSettings(false);
-                fetchNews(); // Trigger auto-refetch if timeline changed
-              }}
+              onClick={handleSaveSettings}
               className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs rounded-xl uppercase tracking-wider transition-all"
             >
-              Save Configuration & Crawl News
+              Save Configuration
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved Changes Warning Dialog Overlay */}
+      {showUnsavedPrompt && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
+          <div className={`w-full max-w-sm rounded-2xl border p-5 flex flex-col gap-4 text-center shadow-2xl relative transition-all ${
+            settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+          }`}>
+            <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 animate-pulse">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold uppercase tracking-wider">Unsaved Changes</h4>
+              <p className={`text-xs mt-2 leading-relaxed ${settings.darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Changes have not been saved. Do you wish to exit without saving?
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 mt-2">
+              <button
+                type="button"
+                onClick={handleCancelExit}
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl uppercase tracking-wider transition-all"
+              >
+                Yes Exit
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUnsavedPrompt(false)}
+                className={`w-full py-2.5 font-bold text-xs rounded-xl uppercase tracking-wider transition-all border ${
+                  settings.darkMode
+                    ? 'border-slate-800 bg-slate-950/40 text-slate-300 hover:bg-slate-950/60'
+                    : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                No I want to Save
+              </button>
+            </div>
           </div>
         </div>
       )}
