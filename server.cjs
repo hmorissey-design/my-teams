@@ -219,6 +219,7 @@ function filterSitesForTeam(teamName, customSites) {
       "fourfourtwo.com",
       "theguardian.com",
       "mlssoccer.com",
+      "skysports.com",
       "marca.com",
       "as.com",
       "mundodeportivo.com",
