@@ -361,7 +361,7 @@ function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
     basketball: ["nba.com", "euroleague.net", "eurohoops.net"],
     football: ["nfl.com", "cfl.ca"],
     soccer: [
-      "goal.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "mlssoccer.com", 
+      "goal.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "mlssoccer.com", "skysports.com",
       "marca.com", "as.com", "mundodeportivo.com", "gazzetta.it", "corrieredellosport.it", 
       "tuttosport.com", "kicker.de", "bild.de", "sport1.de", "lequipe.fr", "francefootball.fr", "footmercato.net"
     ]

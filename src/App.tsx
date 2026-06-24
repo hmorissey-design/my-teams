@@ -214,7 +214,7 @@ function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
     basketball: ["nba.com", "euroleague.net", "eurohoops.net"],
     football: ["nfl.com", "cfl.ca"],
     soccer: [
-      "goal.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "mlssoccer.com", 
+      "goal.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "mlssoccer.com", "skysports.com",
       "marca.com", "as.com", "mundodeportivo.com", "gazzetta.it", "corrieredellosport.it", 
       "tuttosport.com", "kicker.de", "bild.de", "sport1.de", "lequipe.fr", "francefootball.fr", "footmercato.net"
     ]
@@ -260,7 +260,7 @@ export default function App() {
         return {
           recencyDays: typeof parsed.recencyDays === "number" ? Math.min(Math.max(parsed.recencyDays, 1), 2) : 2,
           darkMode: typeof parsed.darkMode === "boolean" ? parsed.darkMode : true,
-          teams: Array.isArray(parsed.teams) ? parsed.teams : ["Montreal Canadiens", "Toronto Blue Jays"],
+          teams: Array.isArray(parsed.teams) ? parsed.teams : [],
           feedMode: typeof parsed.feedMode === "string" ? parsed.feedMode : "direct",
           customSites: loadedCustomSites,
           sortBy: typeof parsed.sortBy === "string" ? parsed.sortBy : "recent",
@@ -272,7 +272,7 @@ export default function App() {
     return {
       recencyDays: 2,
       darkMode: true,
-      teams: ["Montreal Canadiens", "Toronto Blue Jays"],
+      teams: [],
       feedMode: "direct",
       customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"],
       sortBy: "recent",
@@ -280,6 +280,21 @@ export default function App() {
   });
 
   // --- UI and News States ---
+  // Get list of sites that are actually active for the currently followed teams
+  const getActuallySearchedSites = (): string[] => {
+    if (settings.teams.length === 0) {
+      return [];
+    }
+    const allSearched = new Set<string>();
+    settings.teams.forEach(team => {
+      const relevant = filterSitesForTeam(team, settings.customSites);
+      relevant.forEach(site => allSearched.add(site.toLowerCase().trim()));
+    });
+    return Array.from(allSearched);
+  };
+
+  const actuallySearched = getActuallySearchedSites();
+
   const [newsCache, setNewsCache] = useState<Record<string, TeamNews>>(() => {
     const todayStr = new Date().toLocaleDateString();
     const lastDate = localStorage.getItem("my_teams_last_refresh_date");
@@ -660,7 +675,7 @@ export default function App() {
     const targetTeams = forceTeams || settings.teams;
     const targetRecency = typeof forceRecencyDays === "number" ? forceRecencyDays : settings.recencyDays;
     if (targetTeams.length === 0) {
-      setErrorMsg("Please add at least one team to track news.");
+      setErrorMsg(null);
       return;
     }
 
@@ -1081,18 +1096,20 @@ export default function App() {
               <p className="text-xs text-slate-400 max-w-md mx-auto mb-6">
                 Your bespoke Google Play news tracker. Begin by adding teams in the left sidebar or select from popular sports groups. We will search, gather, and organize the ultimate live-crawled updates for you.
               </p>
-              <div className="flex justify-center gap-3">
+              <div className="flex justify-center">
                 <button 
-                  onClick={() => handleAddTeam("Montreal Canadiens")} 
-                  className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold text-xs rounded-xl hover:bg-slate-700 transition"
+                  onClick={() => {
+                    setSettingsTab("teams");
+                    setShowSettings(true);
+                  }} 
+                  className={`px-5 py-2.5 font-bold text-xs rounded-xl transition flex items-center gap-2 ${
+                    settings.darkMode 
+                      ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400' 
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md animate-pulse'
+                  }`}
                 >
-                  Track Montreal Canadiens
-                </button>
-                <button 
-                  onClick={() => handleAddTeam("Toronto Blue Jays")} 
-                  className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold text-xs rounded-xl hover:bg-slate-700 transition"
-                >
-                  Track Toronto Blue Jays
+                  <Compass className="w-4 h-4" />
+                  Select Team(s) to follow
                 </button>
               </div>
             </div>
@@ -1128,9 +1145,6 @@ export default function App() {
                 {[...settings.teams]
                   .filter(team => selectedTeamTab === "All" || selectedTeamTab === team)
                   .sort((a, b) => {
-                    if (settings.sortBy === "default") {
-                      return settings.teams.indexOf(a) - settings.teams.indexOf(b);
-                    }
                     const getLatestTime = (t: string) => {
                       const cache = newsCache[t];
                       if (!cache) return 0;
@@ -1612,9 +1626,23 @@ export default function App() {
               <div className={`p-4 rounded-xl border space-y-3.5 ${
                 settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
               }`}>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
-                  Target Sports Web Outlets to Display News From
-                </label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
+                    Target Sports Web Outlets to Display News From
+                  </label>
+                  <p className="text-[10px] text-slate-500">
+                    Outlets are automatically mapped and filtered based on the sports of the teams you follow.
+                  </p>
+                </div>
+
+                {settings.teams.length === 0 && (
+                  <div className={`p-3 rounded-xl border text-[11px] font-medium flex items-center gap-2 ${
+                    settings.darkMode ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-800 shadow-sm'
+                  }`}>
+                    <span className="text-sm">⚠️</span>
+                    <span>No teams followed yet. Outlets will activate when you follow at least one team.</span>
+                  </div>
+                )}
                 
                 <div className="space-y-3">
                   {/* Global & NA */}
@@ -1624,28 +1652,34 @@ export default function App() {
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
-                        const isActive = settings.customSites.includes(site);
+                        const isPreferred = settings.customSites.includes(site);
+                        const isActive = actuallySearched.includes(site.toLowerCase().trim());
                         return (
                           <button
                             key={site}
                             type="button"
                             onClick={() => {
                               setSettings(p => {
-                                const updated = isActive 
+                                const updated = isPreferred 
                                   ? p.customSites.filter(s => s !== site)
                                   : [...p.customSites, site];
                                 return { ...p, customSites: updated };
                               });
                             }}
-                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
                               isActive
-                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                                : settings.darkMode
-                                  ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                  : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
+                                : isPreferred
+                                  ? (settings.darkMode 
+                                    ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                    : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
+                                  : (settings.darkMode
+                                    ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
+                                    : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
                             }`}
                           >
-                            {isActive ? "✓ " : ""}{site}
+                            <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
+                            {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
                           </button>
                         );
                       })}
@@ -1659,28 +1693,34 @@ export default function App() {
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {["skysports.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "goal.com"].map((site) => {
-                        const isActive = settings.customSites.includes(site);
+                        const isPreferred = settings.customSites.includes(site);
+                        const isActive = actuallySearched.includes(site.toLowerCase().trim());
                         return (
                           <button
                             key={site}
                             type="button"
                             onClick={() => {
                               setSettings(p => {
-                                const updated = isActive 
+                                const updated = isPreferred 
                                   ? p.customSites.filter(s => s !== site)
                                   : [...p.customSites, site];
                                 return { ...p, customSites: updated };
                               });
                             }}
-                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
                               isActive
-                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                                : settings.darkMode
-                                  ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                  : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
+                                : isPreferred
+                                  ? (settings.darkMode 
+                                    ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                    : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
+                                  : (settings.darkMode
+                                    ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
+                                    : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
                             }`}
                           >
-                            {isActive ? "✓ " : ""}{site}
+                            <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
+                            {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
                           </button>
                         );
                       })}
@@ -1699,28 +1739,34 @@ export default function App() {
                         "kicker.de", "bild.de", "sport1.de", 
                         "lequipe.fr", "francefootball.fr", "footmercato.net"
                       ].map((site) => {
-                        const isActive = settings.customSites.includes(site);
+                        const isPreferred = settings.customSites.includes(site);
+                        const isActive = actuallySearched.includes(site.toLowerCase().trim());
                         return (
                           <button
                             key={site}
                             type="button"
                             onClick={() => {
                               setSettings(p => {
-                                const updated = isActive 
+                                const updated = isPreferred 
                                   ? p.customSites.filter(s => s !== site)
                                   : [...p.customSites, site];
                                 return { ...p, customSites: updated };
                               });
                             }}
-                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold ${
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
                               isActive
-                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400"
-                                : settings.darkMode
-                                  ? "bg-slate-950/40 border-slate-850 text-slate-450 hover:border-slate-705"
-                                  : "bg-white border-slate-205 text-slate-600 hover:bg-slate-50"
+                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
+                                : isPreferred
+                                  ? (settings.darkMode 
+                                    ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                    : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
+                                  : (settings.darkMode
+                                    ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
+                                    : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
                             }`}
                           >
-                            {isActive ? "✓ " : ""}{site}
+                            <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
+                            {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
                           </button>
                         );
                       })}
@@ -1757,11 +1803,13 @@ export default function App() {
                 </div>
 
                 {settings.customSites.length > 0 && (
-                  <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-24 overflow-y-auto ${
+                  <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-36 overflow-y-auto ${
                     settings.darkMode ? 'bg-slate-950/30 border-slate-855' : 'bg-slate-50 border-slate-200 shadow-inner'
                   }`}>
                     <div className="flex justify-between items-center w-full mb-1">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase block">Currently active outlets filter ({settings.customSites.length}):</span>
+                      <span className="text-[9px] font-bold text-slate-500 uppercase block">
+                        Currently active outlets filter ({actuallySearched.length} of {settings.customSites.length} searching):
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1775,57 +1823,28 @@ export default function App() {
                         Reset to Defaults
                       </button>
                     </div>
-                    {settings.customSites.map(s => (
-                      <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
-                        settings.darkMode ? 'bg-slate-800 text-slate-350' : 'bg-white border border-slate-200 text-slate-700 shadow-sm'
-                      }`}>
-                        {s}
-                        <button 
-                          type="button"
-                          onClick={() => setSettings(p => ({ ...p, customSites: p.customSites.filter(out => out !== s) }))}
-                          className="text-red-500 hover:text-red-400 ml-1 select-none font-bold font-sans text-xs"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                    {settings.customSites.map(s => {
+                      const isActive = actuallySearched.includes(s.toLowerCase().trim());
+                      return (
+                        <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all ${
+                          isActive
+                            ? (settings.darkMode ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 border border-emerald-200 text-emerald-800')
+                            : (settings.darkMode ? 'bg-slate-900 text-slate-500 border border-slate-800 opacity-60' : 'bg-slate-100 border border-slate-205 text-slate-400 opacity-60')
+                        }`}>
+                          <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                          {s} {!isActive && <span className="text-[8px] font-sans opacity-70">(unused)</span>}
+                          <button 
+                            type="button"
+                            onClick={() => setSettings(p => ({ ...p, customSites: p.customSites.filter(out => out !== s) }))}
+                            className="text-red-500 hover:text-red-400 ml-1 select-none font-bold font-sans text-xs"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
-              </div>
-
-              {/* SECTION 5: NEWS SORTING MODE */}
-              <div className={`p-4 rounded-xl border space-y-3 ${
-                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
-              }`}>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
-                  News Sorting Mode
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSettings(prev => ({ ...prev, sortBy: "recent" }))}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
-                      settings.sortBy === "recent"
-                        ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
-                        : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
-                    }`}
-                  >
-                    <span className="text-xs">⚡ Latest Activity</span>
-                    <span className="text-[9px] font-medium text-slate-500">Newest headline first</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSettings(prev => ({ ...prev, sortBy: "default" }))}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 justify-center text-center ${
-                      settings.sortBy === "default"
-                        ? (settings.darkMode ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm')
-                        : (settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm')
-                    }`}
-                  >
-                    <span className="text-xs">📌 Custom Order</span>
-                    <span className="text-[9px] font-medium text-slate-500">Use team list priority order</span>
-                  </button>
-                </div>
               </div>
 
               {/* SECTION 6: APPEARANCE TOGGLE */}
@@ -1847,13 +1866,13 @@ export default function App() {
                 >
                   {settings.darkMode ? (
                     <>
-                      <Moon className="w-4 h-4 text-emerald-400" />
-                      <span>Dark Theme</span>
+                      <Sun className="w-4 h-4 text-amber-500" />
+                      <span>Change to Light Theme</span>
                     </>
                   ) : (
                     <>
-                      <Sun className="w-4 h-4 text-amber-500" />
-                      <span>Light Theme</span>
+                      <Moon className="w-4 h-4 text-emerald-400" />
+                      <span>Change to Dark Theme</span>
                     </>
                   )}
                 </button>

@@ -416,7 +416,7 @@ export const SPORTS_PRESETS: SportPreset[] = [
   },
   {
     id: "football",
-    name: "American Football",
+    name: "North American Football",
     icon: "🏈",
     leagues: [
       {
@@ -476,7 +476,7 @@ export const SPORTS_PRESETS: SportPreset[] = [
   },
   {
     id: "soccer",
-    name: "Soccer / Football",
+    name: "Football / Soccer",
     icon: "⚽",
     leagues: [
       {
