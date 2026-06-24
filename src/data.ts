@@ -359,10 +359,15 @@ export const SPORTS_PRESETS: SportPreset[] = [
         id: "cfl",
         name: "CFL (Canadian Football League)",
         teams: [
-          { name: "Toronto Argonauts", display: "Argonauts" },
-          { name: "Saskatchewan Roughriders", display: "Roughriders" },
-          { name: "Winnipeg Blue Bombers", display: "Blue Bombers" },
-          { name: "Montreal Alouettes", display: "Alouettes" }
+          { name: "BC Lions", display: "BC Lions" },
+          { name: "Calgary Stampeders", display: "Calgary" },
+          { name: "Edmonton Elks", display: "Edmonton" },
+          { name: "Hamilton Tiger-Cats", display: "Hamilton" },
+          { name: "Montreal Alouettes", display: "Montreal" },
+          { name: "Ottawa Redblacks", display: "Ottawa" },
+          { name: "Saskatchewan Roughriders", display: "Saskatchewan" },
+          { name: "Toronto Argonauts", display: "Toronto" },
+          { name: "Winnipeg Blue Bombers", display: "Winnipeg" }
         ]
       }
     ]
@@ -526,6 +531,7 @@ export const SPORTS_PRESETS: SportPreset[] = [
           { name: "Portland Timbers", display: "Portland" },
           { name: "Real Salt Lake", display: "Real Salt Lake" },
           { name: "San Jose Earthquakes", display: "San Jose" },
+          { name: "San Diego FC", display: "San Diego" },
           { name: "Seattle Sounders FC", display: "Seattle" },
           { name: "Sporting Kansas City", display: "Sporting KC" },
           { name: "St. Louis City SC", display: "St. Louis" },
