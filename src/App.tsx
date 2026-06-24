@@ -156,8 +156,8 @@ export default function App() {
     setShowUnsavedPrompt(false);
   };
   const [isSelectTeamsExpanded, setIsSelectTeamsExpanded] = useState(false);
-  const [expandedSports, setExpandedSports] = useState<string[]>(["hockey"]); // default to Hockey expanded
-  const [expandedLeagues, setExpandedLeagues] = useState<string[]>(["nhl"]);   // default to NHL expanded
+  const [expandedSports, setExpandedSports] = useState<string[]>([]); // start fully collapsed
+  const [expandedLeagues, setExpandedLeagues] = useState<string[]>([]);   // start fully collapsed
   const [selectedTeamTab, setSelectedTeamTab] = useState<string>("All");
   const [isMyTrackedTeamsExpanded, setIsMyTrackedTeamsExpanded] = useState(false);
 
@@ -406,7 +406,17 @@ export default function App() {
       if (titleLower.includes(nicknameWord)) {
         const commonNicks = ["wildcats", "giants", "tigers", "panthers", "lions", "eagles", "cardinals", "bulldogs", "rangers", "kings", "jets", "stars"];
         if (commonNicks.includes(nicknameWord)) {
-          const regionalContext = ["qmjhl", "lhjmq", "hockey", "chl", "halifax", "mooseheads", "saint john", "sea dogs", "bathurst", "titan", "cape breton", "eagles", "rimouski", "oceanic", "quebec", "remparts", "chicoutimi", "sagueneens", "shawinigan", "cataractes", "sherbrooke", "phoenix", "rouyn-noranda", "huskies", "val-d'or", "foreurs", "boisbriand", "armada", "victoriaville", "tigres", "drummondville", "voltigeurs", "charlottetown", "islanders", "baie-comeau", "drakkar"];
+          const regionalContext = [
+            "qmjhl", "lhjmq", "hockey", "chl", "ohl", "whl", "halifax", "mooseheads", 
+            "saint john", "sea dogs", "bathurst", "titan", "cape breton", "eagles", 
+            "rimouski", "oceanic", "quebec", "remparts", "chicoutimi", "sagueneens", 
+            "shawinigan", "cataractes", "sherbrooke", "phoenix", "rouyn-noranda", 
+            "huskies", "val-d'or", "foreurs", "boisbriand", "armada", "victoriaville", 
+            "tigres", "drummondville", "voltigeurs", "charlottetown", "islanders", 
+            "baie-comeau", "drakkar", "brantford", "kitchener", "vancouver", 
+            "medicine hat", "everett", "london", "knights", "sarnia", "saginaw", 
+            "colts", "otters", "spitfires", "blazers", "rockets", "broncos", "silvertips"
+          ];
           const hasContext = regionalContext.some(ctx => titleLower.includes(ctx));
           if (hasContext) return true;
         } else {
