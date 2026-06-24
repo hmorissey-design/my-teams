@@ -47,7 +47,7 @@ export default function App() {
 
         // Ensure standard structure
         return {
-          recencyDays: typeof parsed.recencyDays === "number" ? parsed.recencyDays : 3,
+          recencyDays: typeof parsed.recencyDays === "number" ? Math.min(Math.max(parsed.recencyDays, 1), 2) : 2,
           darkMode: typeof parsed.darkMode === "boolean" ? parsed.darkMode : true,
           teams: Array.isArray(parsed.teams) ? parsed.teams : ["Montreal Canadiens", "Toronto Blue Jays"],
           feedMode: typeof parsed.feedMode === "string" ? parsed.feedMode : "direct",
@@ -59,7 +59,7 @@ export default function App() {
       }
     }
     return {
-      recencyDays: 3,
+      recencyDays: 2,
       darkMode: true,
       teams: ["Montreal Canadiens", "Toronto Blue Jays"],
       feedMode: "direct",
@@ -70,6 +70,13 @@ export default function App() {
 
   // --- UI and News States ---
   const [newsCache, setNewsCache] = useState<Record<string, TeamNews>>(() => {
+    const todayStr = new Date().toLocaleDateString();
+    const lastDate = localStorage.getItem("my_teams_last_refresh_date");
+    if (lastDate && lastDate !== todayStr) {
+      // New day detected. Return empty cache to clear previous day's links.
+      return {};
+    }
+
     const saved = localStorage.getItem("my_teams_newscache");
     if (saved) {
       try {
@@ -80,6 +87,13 @@ export default function App() {
   });
 
   const [viewedLinks, setViewedLinks] = useState<string[]>(() => {
+    const todayStr = new Date().toLocaleDateString();
+    const lastDate = localStorage.getItem("my_teams_last_refresh_date");
+    if (lastDate && lastDate !== todayStr) {
+      // New day detected. Return empty viewed links.
+      return [];
+    }
+
     try {
       const saved = localStorage.getItem("my_teams_viewed_links");
       return saved ? JSON.parse(saved) : [];
@@ -87,6 +101,11 @@ export default function App() {
       return [];
     }
   });
+
+  // Keep last refresh date updated in local storage
+  useEffect(() => {
+    localStorage.setItem("my_teams_last_refresh_date", new Date().toLocaleDateString());
+  }, []);
 
   const markLinkAsViewed = (url: string) => {
     if (!viewedLinks.includes(url)) {
@@ -102,10 +121,10 @@ export default function App() {
   const [customSiteInput, setCustomSiteInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"teams" | "engine">("teams");
-  const [expandedLeagues, setExpandedLeagues] = useState<string[]>([]);
+   const [expandedLeagues, setExpandedLeagues] = useState<string[]>([]);
   const [selectedTeamTab, setSelectedTeamTab] = useState<string>("All");
   const [isMyTrackedTeamsExpanded, setIsMyTrackedTeamsExpanded] = useState(false);
-  
+
   // Rotating Ads
   const [topAd, setTopAd] = useState<AdData>(GOOGLE_ADMOB_ADS[0]);
   const [bottomAd, setBottomAd] = useState<AdData>(GOOGLE_ADMOB_ADS[1]);
@@ -444,7 +463,7 @@ export default function App() {
               const rawArticles = parseGoogleNewsRSSClient(xmlText);
               let articles = rawArticles.filter(art => isHeadlineMatchClient(art.title, team) && !isSpamArticle(art.title, art.url));
 
-              const days = Math.min(Math.max(Number(settings.recencyDays) || 1, 1), 5);
+              const days = Math.min(Math.max(Number(settings.recencyDays) || 1, 1), 2);
               const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
               let filteredArticles = articles.filter((art) => art.timestamp >= cutoffTime);
 
@@ -627,7 +646,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-lg font-black tracking-tight uppercase flex items-center gap-2">
-              MY TEAMS <span className="text-[10px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono">Google Play Edition</span>
+              MY TEAMS
             </h1>
           </div>
         </div>
@@ -822,11 +841,8 @@ export default function App() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                    Live News Feed • Organized By Team
+                    News Feed found in last {settings.recencyDays} {settings.recencyDays === 1 ? 'day' : 'days'}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Feed source: Custom sports sites (no API quota used) • Window: last {settings.recencyDays} {settings.recencyDays === 1 ? 'day' : 'days'}.
-                  </p>
                 </div>
                 
                 <div className="flex items-center gap-3 self-start sm:self-center">
@@ -909,22 +925,19 @@ export default function App() {
                           </div>
                         ) : (
                           <div className="space-y-4">
-                            {/* Feed status note */}
-                            <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
-                              settings.darkMode 
-                                ? 'bg-slate-950/40 border-slate-800 text-slate-400' 
-                                : 'bg-slate-50 border-slate-200 text-slate-600'
-                            }`}>
-                              <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <span>{data.summary.replace(/^[•\s]+/g, '').split('\n')[0]}</span>
+                            {/* Feed status note - Only shown if there is an error */}
+                            {data.error && (
+                              <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                                settings.darkMode 
+                                  ? 'bg-rose-950/20 border-rose-900/50 text-rose-300' 
+                                  : 'bg-rose-50 border-rose-200 text-rose-700'
+                              }`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                                  <span>{data.summary.replace(/^[•\s]+/g, '').split('\n')[0]}</span>
+                                </div>
                               </div>
-                              {data.articles && data.articles.length > 0 && (
-                                <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/20 font-bold shrink-0">
-                                  {data.articles.length} headlines
-                                </span>
-                              )}
-                            </div>
+                            )}
 
                             {/* Direct articles timeline */}
                             <div className="flex flex-col gap-2.5">
@@ -1490,17 +1503,14 @@ export default function App() {
                   <input
                     type="range"
                     min="1"
-                    max="5"
+                    max="2"
                     value={settings.recencyDays}
                     onChange={(e) => handleRecencyChange(Number(e.target.value))}
                     className="w-full h-1.5 bg-slate-805 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                   />
                   <div className="flex justify-between text-[11px] text-slate-500">
-                    <span>1 Day</span>
-                    <span>2 Days</span>
-                    <span>3 Days</span>
-                    <span>4 Days</span>
-                    <span>5 Days (Max)</span>
+                    <span>1 Day (Ultra-Fresh)</span>
+                    <span>2 Days (Maximum)</span>
                   </div>
                 </div>
 

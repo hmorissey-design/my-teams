@@ -180,7 +180,7 @@ app.post("/api/news", async (req, res) => {
       return res.status(400).json({ error: "Please specify at least one team." });
     }
 
-    const days = Math.min(Math.max(Number(recencyDays) || 1, 1), 5);
+    const days = Math.min(Math.max(Number(recencyDays) || 1, 1), 2);
     const isDirectMode = feedMode === "direct";
 
     const results = await Promise.all(
