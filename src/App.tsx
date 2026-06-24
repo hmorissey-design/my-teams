@@ -653,7 +653,7 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           <div className={`hidden md:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl border ${settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
-            <span>Last {settings.recencyDays} {settings.recencyDays === 1 ? 'day' : 'days'} news</span>
+            <span>{settings.recencyDays === 1 ? "24 Hours News" : "Past Two Days News"}</span>
           </div>
 
           <button 
@@ -694,17 +694,17 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsMyTrackedTeamsExpanded(!isMyTrackedTeamsExpanded)}
-              className="w-full text-xs uppercase tracking-wider text-slate-400 font-bold flex items-center justify-between text-left transition-colors duration-150 py-1"
+              className="w-full text-[11px] uppercase tracking-wider text-slate-400 font-bold flex items-center justify-between text-left transition-colors duration-150 py-0.5"
             >
               <span className="flex items-center gap-1.5 hover:text-slate-200 transition-colors">
                 {isMyTrackedTeamsExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <ChevronDown className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <ChevronRight className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 )}
-                My Tracked Teams
+                Teams I'm following
               </span>
-              <span className="text-[10px] px-2 py-0.5 bg-slate-805 text-slate-300 rounded-full font-mono font-bold">{settings.teams.length}</span>
+              <span className="text-[9px] px-1.5 py-0.2 bg-slate-805 text-slate-300 rounded-full font-mono font-bold">{settings.teams.length}</span>
             </button>
 
             {isMyTrackedTeamsExpanded && (
@@ -840,9 +840,16 @@ export default function App() {
               {/* Header section status */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                    News Feed found in last {settings.recencyDays} {settings.recencyDays === 1 ? 'day' : 'days'}
-                  </h2>
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase tracking-wider ${
+                    settings.darkMode 
+                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                      : 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                  }`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                    <h2>
+                      {settings.recencyDays === 1 ? "News found in last 24 hours" : "News found in past two days"}
+                    </h2>
+                  </div>
                 </div>
                 
                 <div className="flex items-center gap-3 self-start sm:self-center">
@@ -898,7 +905,7 @@ export default function App() {
                           <div className="flex items-center gap-3">
                             {data?.timestamp && (
                               <span className="text-[10px] text-slate-500 font-medium">
-                                Crawled: {new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                Updated: {new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             )}
                             <button 
@@ -941,9 +948,6 @@ export default function App() {
 
                             {/* Direct articles timeline */}
                             <div className="flex flex-col gap-2.5">
-                              <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">
-                                Recent Tracking feed headlines (Newest First):
-                              </span>
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[34rem] overflow-y-auto pr-1">
                                 {data.articles && data.articles.length > 0 ? (
@@ -969,7 +973,7 @@ export default function App() {
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={() => markLinkAsViewed(art.url)}
-                                        className={`p-3.5 rounded-xl border text-left flex items-start gap-3 group transition-all duration-150 ${
+                                        className={`py-1.5 px-3 rounded-lg border text-left flex items-start gap-2.5 group transition-all duration-150 ${
                                           isViewed
                                             ? (settings.darkMode
                                                 ? 'bg-slate-950/20 border-slate-900/60 hover:bg-slate-900/40'
@@ -979,7 +983,7 @@ export default function App() {
                                                 : 'bg-slate-50 border-slate-200 hover:bg-white hover:border-emerald-500/35 hover:shadow-sm')
                                         }`}
                                       >
-                                        <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 transition-transform ${
+                                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 transition-transform ${
                                           isViewed
                                             ? 'bg-slate-600 dark:bg-slate-700'
                                             : 'bg-emerald-400 group-hover:scale-125'
@@ -996,8 +1000,8 @@ export default function App() {
                                           }`}>
                                             {art.title}
                                           </p>
-                                          <div className="flex items-center gap-2 mt-1.5">
-                                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded font-mono ${
+                                          <div className="flex items-center gap-2 mt-1">
+                                            <span className={`text-[9px] font-black uppercase px-1 py-0.2 rounded font-mono ${
                                               isViewed
                                                 ? 'text-slate-500 bg-slate-500/5 dark:bg-slate-500/10'
                                                 : 'text-emerald-500 bg-emerald-500/10'
