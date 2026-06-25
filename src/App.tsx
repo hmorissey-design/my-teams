@@ -815,10 +815,25 @@ export default function App() {
     }
   };
 
-  // Initial Fetch if cache is empty for followed teams
+  // Initial Fetch if cache is empty or if any tracked teams have news older than 20 minutes
   useEffect(() => {
+    if (settings.teams.length === 0) return;
+
+    const now = Date.now();
+    const CACHE_EXPIRY_MS = 20 * 60 * 1000; // 20 minutes
+
     const missing = settings.teams.filter(t => !newsCache[t]);
-    if (missing.length > 0 && settings.teams.length > 0) {
+    const expired = settings.teams.filter(t => {
+      const cacheEntry = newsCache[t];
+      if (!cacheEntry) return false;
+      const age = now - (cacheEntry.timestamp || 0);
+      return age > CACHE_EXPIRY_MS;
+    });
+
+    if (missing.length > 0 || expired.length > 0) {
+      if (expired.length > 0 && missing.length === 0) {
+        console.log(`Auto-refreshing stale sports feeds (older than 20m): ${expired.join(", ")}`);
+      }
       fetchNews();
     }
   }, []);
@@ -1136,7 +1151,7 @@ export default function App() {
                   {isLoading && (
                     <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-xl animate-pulse">
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
-                      <span>Crawling live feeds...</span>
+                      <span>Searching for Updates...</span>
                     </div>
                   )}
                 </div>
