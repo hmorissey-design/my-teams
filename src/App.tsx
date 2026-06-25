@@ -512,20 +512,42 @@ export default function App() {
   const fetchRssWithFallbackProxies = async (rssUrl: string): Promise<string> => {
     const errors: string[] = [];
     const proxies = [
-      // 1. corsproxy.io (very fast, direct text response)
+      // 1. Google Gadget Proxy (hosted by Google, very fast, rarely rate-limited for Google services like Google News RSS)
       {
-        name: "corsproxy.io",
+        name: "Google Gadget Proxy",
         fn: async () => {
-          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(rssUrl)}`);
+          const res = await fetch(`https://images-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=120&url=${encodeURIComponent(rssUrl)}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();
           if (!text || text.length < 100) throw new Error("Empty/truncated response");
           return text;
         }
       },
-      // 2. allorigins.win (returns nested JSON wrapper)
+      // 2. corsproxy.io (using standard query format)
       {
-        name: "allorigins.win",
+        name: "corsproxy.io",
+        fn: async () => {
+          const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(rssUrl)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (!text || text.length < 100) throw new Error("Empty/truncated response");
+          return text;
+        }
+      },
+      // 3. allorigins.win (raw direct passthrough)
+      {
+        name: "allorigins.win (raw)",
+        fn: async () => {
+          const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (!text || text.length < 100) throw new Error("Empty/truncated response");
+          return text;
+        }
+      },
+      // 4. allorigins.win (nested JSON wrapper)
+      {
+        name: "allorigins.win (json)",
         fn: async () => {
           const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -535,7 +557,7 @@ export default function App() {
           return json.contents;
         }
       },
-      // 3. codetabs (alternative direct proxy)
+      // 5. codetabs (alternative proxy)
       {
         name: "codetabs.com",
         fn: async () => {
@@ -843,7 +865,7 @@ export default function App() {
     }
   };
 
-  // Initial Fetch if cache is empty or if any tracked teams have news older than 20 minutes
+  // Initial Fetch if cache is empty or if any tracked teams have news older than 20 minutes (or if they had error/no-results states)
   useEffect(() => {
     if (settings.teams.length === 0) return;
 
@@ -854,13 +876,19 @@ export default function App() {
     const expired = settings.teams.filter(t => {
       const cacheEntry = newsCache[t];
       if (!cacheEntry) return false;
+
+      // Force refresh on mount if previous attempt was an error or returned zero articles
+      if (cacheEntry.error || !cacheEntry.articles || cacheEntry.articles.length === 0) {
+        return true;
+      }
+
       const age = now - (cacheEntry.timestamp || 0);
       return age > CACHE_EXPIRY_MS;
     });
 
     if (missing.length > 0 || expired.length > 0) {
       if (expired.length > 0 && missing.length === 0) {
-        console.log(`Auto-refreshing stale sports feeds (older than 20m): ${expired.join(", ")}`);
+        console.log(`Auto-refreshing stale or failed sports feeds: ${expired.join(", ")}`);
       }
       fetchNews();
     }
