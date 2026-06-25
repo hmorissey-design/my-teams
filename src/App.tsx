@@ -773,6 +773,15 @@ export default function App() {
                 ],
                 articles: topArticles,
                 timestamp: Date.now(),
+                diagnostics: {
+                  searchQuery,
+                  rssUrl,
+                  rssStatus: "200 (Client CORS Fallback)",
+                  rssStatusText: "OK",
+                  geminiStatus: "Disabled",
+                  timestamp: new Date().toISOString(),
+                },
+                error: topArticles.length === 0,
               };
             } catch (innerErr: any) {
               console.error(`Client-side crawl error for ${team}:`, innerErr);
@@ -785,6 +794,15 @@ export default function App() {
                 articles: [],
                 timestamp: Date.now(),
                 error: true,
+                diagnostics: {
+                  searchQuery: `"${team}"`,
+                  rssUrl: `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`,
+                  rssStatus: "Client Proxy Failure",
+                  rssStatusText: innerErr.message || String(innerErr),
+                  rssError: innerErr.stack || String(innerErr),
+                  geminiStatus: "Disabled",
+                  timestamp: new Date().toISOString(),
+                }
               };
             }
           })
