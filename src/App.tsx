@@ -510,45 +510,55 @@ export default function App() {
   };
 
   const fetchRssWithFallbackProxies = async (rssUrl: string): Promise<string> => {
+    const errors: string[] = [];
     const proxies = [
       // 1. corsproxy.io (very fast, direct text response)
-      async () => {
-        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(rssUrl)}`);
-        if (!res.ok) throw new Error("corsproxy.io failed");
-        const text = await res.text();
-        if (!text || text.length < 100) throw new Error("Empty or short response from corsproxy.io");
-        return text;
+      {
+        name: "corsproxy.io",
+        fn: async () => {
+          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(rssUrl)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (!text || text.length < 100) throw new Error("Empty/truncated response");
+          return text;
+        }
       },
       // 2. allorigins.win (returns nested JSON wrapper)
-      async () => {
-        const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
-        if (!res.ok) throw new Error("allorigins failed");
-        const json = await res.json();
-        if (!json.contents) throw new Error("allorigins empty content");
-        if (json.contents.length < 100) throw new Error("Short response from allorigins");
-        return json.contents;
+      {
+        name: "allorigins.win",
+        fn: async () => {
+          const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          if (!json.contents) throw new Error("Missing contents in JSON response");
+          if (json.contents.length < 100) throw new Error("Empty/truncated response");
+          return json.contents;
+        }
       },
       // 3. codetabs (alternative direct proxy)
-      async () => {
-        const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rssUrl)}`);
-        if (!res.ok) throw new Error("codetabs failed");
-        const text = await res.text();
-        if (!text || text.length < 100) throw new Error("Empty or short response from codetabs");
-        return text;
+      {
+        name: "codetabs.com",
+        fn: async () => {
+          const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rssUrl)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (!text || text.length < 100) throw new Error("Empty/truncated response");
+          return text;
+        }
       }
     ];
 
-    let lastError: any = null;
     for (let i = 0; i < proxies.length; i++) {
       try {
-        const text = await proxies[i]();
+        const text = await proxies[i].fn();
         return text;
-      } catch (err) {
-        lastError = err;
-        console.warn(`Proxy ${i + 1} failed:`, err);
+      } catch (err: any) {
+        const errMsg = err.message || String(err);
+        errors.push(`${proxies[i].name} (${errMsg})`);
+        console.warn(`Client Proxy Fallback [${proxies[i].name}] failed:`, errMsg);
       }
     }
-    throw lastError || new Error("All client-side CORS proxies failed");
+    throw new Error(`All proxies failed: [${errors.join(" | ")}]`);
   };
 
   const parseGoogleNewsRSSClient = (xmlText: string) => {
@@ -1297,8 +1307,10 @@ export default function App() {
                                         {data.diagnostics.generalRssError && <div className="md:col-span-2 text-[9px] opacity-80">Reason: {data.diagnostics.generalRssError}</div>}
                                       </div>
                                     )}
-                                    <p className="text-[9px] opacity-70 italic border-t border-rose-900/10 pt-1 mt-1 font-sans">
-                                      💡 Tip: If you see HTTP 429, Google News RSS has rate-limited our server IP. Pacing delay will automatically help on next load.
+                                    <p className="text-[9px] opacity-75 italic border-t border-rose-900/10 pt-1 mt-1 font-sans leading-relaxed">
+                                      💡 <strong>Deployment Tip:</strong> {data.diagnostics.rssStatus === "Client Proxy Failure" 
+                                        ? "Since this app is hosted on a static page platform (e.g. GitHub Pages), it utilizes public CORS proxies (corsproxy.io, allorigins, codetabs) to query feeds directly from the browser. If all public proxies are rate-limited, wait a few minutes or run the full-stack version to use the backend proxy."
+                                        : "If you see HTTP 429 or fetch errors, the Google News RSS API has rate-limited the server IP. The pacing delay will automatically spread requests on the next load."}
                                     </p>
                                   </div>
                                 )}
