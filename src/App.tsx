@@ -208,7 +208,7 @@ function getSportForTeam(teamName: string): string {
 function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
   const targetSport = getSportForTeam(teamName);
 
-  const SPORT_SPECIFIC_OUTLETS: Record<string, string[]> = {
+  const SPORT_SPECIFIC_SOURCES: Record<string, string[]> = {
     hockey: ["nhl.com", "chl.ca", "theqmjhl.ca", "theahl.com", "rds.ca", "tvasports.ca", "cbc.ca"],
     baseball: ["mlb.com", "milb.com"],
     basketball: ["nba.com", "euroleague.net", "eurohoops.net"],
@@ -229,7 +229,7 @@ function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
     if (targetSport === "general") {
       return true;
     }
-    const isSpecificToOtherSport = Object.entries(SPORT_SPECIFIC_OUTLETS).some(([sp, sites]) => {
+    const isSpecificToOtherSport = Object.entries(SPORT_SPECIFIC_SOURCES).some(([sp, sites]) => {
       return sp !== targetSport && sites.includes(siteDomain);
     });
     return !isSpecificToOtherSport;
@@ -246,7 +246,7 @@ export default function App() {
         
         let loadedCustomSites = Array.isArray(parsed.customSites) ? parsed.customSites : ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"];
         
-        // Migrate existing saved state to automatically include new default outlets if missing
+        // Migrate existing saved state to automatically include new default sources if missing
         if (Array.isArray(parsed.customSites)) {
           if (!loadedCustomSites.includes("skysports.com")) {
             loadedCustomSites = [...loadedCustomSites, "skysports.com"];
@@ -349,6 +349,8 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<"teams" | "engine">("teams");
   const [originalSettings, setOriginalSettings] = useState<AppSettings | null>(null);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
+  const [showSourcesSelector, setShowSourcesSelector] = useState(false);
+  const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
 
   // Backup original settings when opening dialog
   useEffect(() => {
@@ -1209,15 +1211,64 @@ export default function App() {
                           <div className="space-y-4">
                             {/* Feed status note - Only shown if there is an error */}
                             {data.error && (
-                              <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                              <div className={`p-3 rounded-xl border text-xs space-y-2 ${
                                 settings.darkMode 
-                                  ? 'bg-rose-950/20 border-rose-900/50 text-rose-300' 
-                                  : 'bg-rose-50 border-rose-200 text-rose-700'
+                                  ? 'bg-rose-950/20 border-rose-900/40 text-rose-300' 
+                                  : 'bg-rose-50 border-rose-200 text-rose-700 shadow-sm'
                               }`}>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                                  <span>{data.summary.replace(/^[•\s]+/g, '').split('\n')[0]}</span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                                    <span className="font-semibold">{data.summary.replace(/^[•\s]+/g, '').split('\n')[0]}</span>
+                                  </div>
+                                  {data.diagnostics && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedDiagnostics(p => ({ ...p, [team]: !p[team] }))}
+                                      className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${
+                                        settings.darkMode
+                                          ? "bg-rose-950/40 hover:bg-rose-900/30 border-rose-800/40 text-rose-300"
+                                          : "bg-white hover:bg-rose-100 border-rose-300 text-rose-700 shadow-xs"
+                                      }`}
+                                    >
+                                      {expandedDiagnostics[team] ? "Hide Diagnostics ✕" : "Show Diagnostics ⚙️"}
+                                    </button>
+                                  )}
                                 </div>
+
+                                {expandedDiagnostics[team] && data.diagnostics && (
+                                  <div className={`p-3 rounded-lg border text-[10px] font-mono space-y-2 overflow-x-auto ${
+                                    settings.darkMode ? 'bg-slate-950/80 border-rose-900/30 text-rose-200' : 'bg-slate-100 border-rose-200 text-slate-750'
+                                  }`}>
+                                    <p className="font-bold border-b border-rose-900/10 pb-1 mb-1 text-[11px] uppercase tracking-wider">
+                                      🔍 Connection Error Diagnostic Payload
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+                                      <div><span className="opacity-60 font-sans">Status Code:</span> <span className="font-bold">{data.diagnostics.rssStatus}</span></div>
+                                      <div><span className="opacity-60 font-sans">Status Info:</span> <span className="font-bold">{data.diagnostics.rssStatusText}</span></div>
+                                      <div className="md:col-span-2 truncate"><span className="opacity-60 font-sans">Requested URL:</span> <a href={data.diagnostics.rssUrl} target="_blank" rel="noreferrer" className="underline hover:text-emerald-400">{data.diagnostics.rssUrl}</a></div>
+                                      <div><span className="opacity-60 font-sans">Pacing Delay:</span> {data.diagnostics.pacingDelayMs || "None"}</div>
+                                      <div><span className="opacity-60 font-sans">Backup Gemini Status:</span> {data.diagnostics.geminiStatus}</div>
+                                      <div><span className="opacity-60 font-sans">Diagnostic Timestamp:</span> {data.diagnostics.timestamp}</div>
+                                    </div>
+                                    {data.diagnostics.rssError && (
+                                      <div className="mt-2 pt-1.5 border-t border-rose-900/10">
+                                        <p className="font-bold opacity-60 font-sans">RSS Server Reason/Stack:</p>
+                                        <pre className="whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto text-[9px] bg-black/20 p-1.5 rounded">{data.diagnostics.rssError}</pre>
+                                      </div>
+                                    )}
+                                    {data.diagnostics.generalRssStatus && (
+                                      <div className="mt-2 pt-1.5 border-t border-rose-900/10 grid grid-cols-1 md:grid-cols-2 gap-y-1">
+                                        <div><span className="opacity-60 font-sans">General Fallback RSS Status:</span> {data.diagnostics.generalRssStatus}</div>
+                                        <div><span className="opacity-60 font-sans">General Fallback Status Text:</span> {data.diagnostics.generalRssStatusText}</div>
+                                        {data.diagnostics.generalRssError && <div className="md:col-span-2 text-[9px] opacity-80">Reason: {data.diagnostics.generalRssError}</div>}
+                                      </div>
+                                    )}
+                                    <p className="text-[9px] opacity-70 italic border-t border-rose-900/10 pt-1 mt-1 font-sans">
+                                      💡 Tip: If you see HTTP 429, Google News RSS has rate-limited our server IP. Pacing delay will automatically help on next load.
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -1301,7 +1352,7 @@ export default function App() {
                                   })
                                 ) : (
                                   <div className="col-span-1 md:col-span-2 text-xs text-slate-500 italic p-4 bg-slate-950/20 rounded-xl text-center border border-dashed border-slate-800/50">
-                                    No recent stories matched selected web outlets for this team. Add more outlets or extend your recency lookup!
+                                    No recent stories matched selected web sources for this team. Add more sources or extend your recency lookup!
                                   </div>
                                 )}
                               </div>
@@ -1622,227 +1673,293 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SECTION 4: OUTLETS & CUSTOM OUTLETS FILTER */}
+              {/* SECTION 4: SOURCES & CUSTOM SOURCES FILTER */}
               <div className={`p-4 rounded-xl border space-y-3.5 ${
                 settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
               }`}>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
-                    Target Sports Web Outlets to Display News From
-                  </label>
-                  <p className="text-[10px] text-slate-500">
-                    Outlets are automatically mapped and filtered based on the sports of the teams you follow.
-                  </p>
-                </div>
-
-                {settings.teams.length === 0 && (
-                  <div className={`p-3 rounded-xl border text-[11px] font-medium flex items-center gap-2 ${
-                    settings.darkMode ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-800 shadow-sm'
-                  }`}>
-                    <span className="text-sm">⚠️</span>
-                    <span>No teams followed yet. Outlets will activate when you follow at least one team.</span>
+                <div className="flex justify-between items-center gap-2">
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block">
+                      News Sources
+                    </label>
+                    <p className="text-[10px] text-slate-500">
+                      Customize sports web sources that the scanner queries.
+                    </p>
                   </div>
-                )}
-                
-                <div className="space-y-3">
-                  {/* Global & NA */}
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                      Global & North America
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
-                        const isPreferred = settings.customSites.includes(site);
-                        const isActive = actuallySearched.includes(site.toLowerCase().trim());
-                        return (
-                          <button
-                            key={site}
-                            type="button"
-                            onClick={() => {
-                              setSettings(p => {
-                                const updated = isPreferred 
-                                  ? p.customSites.filter(s => s !== site)
-                                  : [...p.customSites, site];
-                                return { ...p, customSites: updated };
-                              });
-                            }}
-                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
-                              isActive
-                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
-                                : isPreferred
-                                  ? (settings.darkMode 
-                                    ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
-                                    : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
-                                  : (settings.darkMode
-                                    ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
-                                    : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
-                            }`}
-                          >
-                            <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
-                            {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* UK & English Europe */}
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                      United Kingdom & Global Soccer
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {["skysports.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "goal.com"].map((site) => {
-                        const isPreferred = settings.customSites.includes(site);
-                        const isActive = actuallySearched.includes(site.toLowerCase().trim());
-                        return (
-                          <button
-                            key={site}
-                            type="button"
-                            onClick={() => {
-                              setSettings(p => {
-                                const updated = isPreferred 
-                                  ? p.customSites.filter(s => s !== site)
-                                  : [...p.customSites, site];
-                                return { ...p, customSites: updated };
-                              });
-                            }}
-                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
-                              isActive
-                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
-                                : isPreferred
-                                  ? (settings.darkMode 
-                                    ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
-                                    : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
-                                  : (settings.darkMode
-                                    ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
-                                    : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
-                            }`}
-                          >
-                            <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
-                            {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Continental Europe */}
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                      Continental Europe (Local News & Newspapers)
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        "marca.com", "as.com", "mundodeportivo.com", 
-                        "gazzetta.it", "corrieredellosport.it", "tuttosport.com", 
-                        "kicker.de", "bild.de", "sport1.de", 
-                        "lequipe.fr", "francefootball.fr", "footmercato.net"
-                      ].map((site) => {
-                        const isPreferred = settings.customSites.includes(site);
-                        const isActive = actuallySearched.includes(site.toLowerCase().trim());
-                        return (
-                          <button
-                            key={site}
-                            type="button"
-                            onClick={() => {
-                              setSettings(p => {
-                                const updated = isPreferred 
-                                  ? p.customSites.filter(s => s !== site)
-                                  : [...p.customSites, site];
-                                return { ...p, customSites: updated };
-                              });
-                            }}
-                            className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
-                              isActive
-                                ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
-                                : isPreferred
-                                  ? (settings.darkMode 
-                                    ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
-                                    : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
-                                  : (settings.darkMode
-                                    ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
-                                    : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
-                            }`}
-                          >
-                            <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
-                            {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Add Custom Outlets */}
-                <div className="flex gap-2 mt-2">
-                  <input
-                    type="text"
-                    placeholder="Type custom news domain (e.g. nfl.com)..."
-                    value={customSiteInput}
-                    onChange={(e) => setCustomSiteInput(e.target.value)}
-                    className={`flex-1 text-xs px-3 py-2 rounded-xl border outline-none font-mono ${
-                      settings.darkMode
-                        ? "bg-slate-950 border-slate-800 text-slate-100 focus:border-slate-750"
-                        : "bg-slate-50 border-slate-200 text-slate-850 focus:border-slate-300"
-                    }`}
-                  />
                   <button
                     type="button"
-                    onClick={() => {
-                      const clean = customSiteInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-                      if (clean && !settings.customSites.includes(clean)) {
-                        setSettings(p => ({ ...p, customSites: [...p.customSites, clean] }));
-                      }
-                      setCustomSiteInput("");
-                    }}
-                    className="px-3 bg-slate-800 text-slate-100 rounded-xl hover:bg-slate-700 text-xs font-bold font-mono transition-all"
+                    onClick={() => setShowSourcesSelector(!showSourcesSelector)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition-all shrink-0 ${
+                      showSourcesSelector
+                        ? "bg-emerald-500 text-slate-950 border-emerald-400"
+                        : settings.darkMode
+                          ? "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850"
+                          : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs"
+                    }`}
                   >
-                    + Add
+                    {showSourcesSelector ? "Hide Options ✕" : "Add or Remove Sources"}
                   </button>
                 </div>
 
-                {settings.customSites.length > 0 && (
-                  <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-36 overflow-y-auto ${
-                    settings.darkMode ? 'bg-slate-950/30 border-slate-855' : 'bg-slate-50 border-slate-200 shadow-inner'
-                  }`}>
-                    <div className="flex justify-between items-center w-full mb-1">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase block">
-                        Currently active outlets filter ({actuallySearched.length} of {settings.customSites.length} searching):
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSettings(p => ({
-                            ...p,
-                            customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"]
-                          }));
-                        }}
-                        className="text-[9px] text-emerald-500 hover:text-emerald-400 font-bold transition-all"
-                      >
-                        Reset to Defaults
-                      </button>
-                    </div>
-                    {settings.customSites.map(s => {
-                      const isActive = actuallySearched.includes(s.toLowerCase().trim());
-                      return (
-                        <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all ${
-                          isActive
-                            ? (settings.darkMode ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 border border-emerald-200 text-emerald-800')
-                            : (settings.darkMode ? 'bg-slate-900 text-slate-500 border border-slate-800 opacity-60' : 'bg-slate-100 border border-slate-205 text-slate-400 opacity-60')
-                        }`}>
-                          <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                          {s} {!isActive && <span className="text-[8px] font-sans opacity-70">(unused)</span>}
-                          <button 
-                            type="button"
-                            onClick={() => setSettings(p => ({ ...p, customSites: p.customSites.filter(out => out !== s) }))}
-                            className="text-red-500 hover:text-red-400 ml-1 select-none font-bold font-sans text-xs"
-                          >
-                            ×
-                          </button>
+                {!showSourcesSelector && (
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide block">
+                      Currently Active Sources:
+                    </span>
+                    {settings.customSites.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                        {settings.customSites.map(s => {
+                          const isActive = actuallySearched.includes(s.toLowerCase().trim());
+                          return (
+                            <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
+                              isActive
+                                ? (settings.darkMode ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-800 border border-emerald-100')
+                                : (settings.darkMode ? 'bg-slate-900 text-slate-500' : 'bg-slate-100 text-slate-400')
+                            }`}>
+                              <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                              {s}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-500 italic block">No active news sources selected.</span>
+                    )}
+                  </div>
+                )}
+
+                {showSourcesSelector && (
+                  <div className="space-y-4 pt-3 border-t border-slate-200/10">
+                    
+                    {/* Part A: Currently Active Sources (Moved to Top) */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center w-full">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+                          Currently Active Sources
                         </span>
-                      );
-                    })}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettings(p => ({
+                              ...p,
+                              customSites: ["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "skysports.com", "goal.com"]
+                            }));
+                          }}
+                          className="text-[9px] text-emerald-500 hover:text-emerald-400 font-bold transition-all"
+                        >
+                          Reset to Defaults
+                        </button>
+                      </div>
+
+                      {settings.customSites.length > 0 ? (
+                        <div className={`p-3 rounded-xl border flex flex-wrap gap-1.5 max-h-36 overflow-y-auto ${
+                          settings.darkMode ? 'bg-slate-950/30 border-slate-855' : 'bg-slate-50 border-slate-200 shadow-inner'
+                        }`}>
+                          {settings.customSites.map(s => {
+                            const isActive = actuallySearched.includes(s.toLowerCase().trim());
+                            return (
+                              <span key={s} className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all ${
+                                isActive
+                                  ? (settings.darkMode ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 border border-emerald-200 text-emerald-800')
+                                  : (settings.darkMode ? 'bg-slate-900 text-slate-500 border border-slate-800 opacity-60' : 'bg-slate-100 border border-slate-250 text-slate-400 opacity-60')
+                              }`}>
+                                <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                {s} {!isActive && <span className="text-[8px] font-sans opacity-70">(unused)</span>}
+                                <button 
+                                  type="button"
+                                  onClick={() => setSettings(p => ({ ...p, customSites: p.customSites.filter(out => out !== s) }))}
+                                  className="text-red-500 hover:text-red-400 ml-1 select-none font-bold font-sans text-xs"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-550 italic">No news sources are currently active. Follow or toggle some sources below to restore tracking.</p>
+                      )}
+
+                      {/* Add Custom Source Input */}
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Type custom news domain (e.g. nfl.com)..."
+                          value={customSiteInput}
+                          onChange={(e) => setCustomSiteInput(e.target.value)}
+                          className={`flex-1 text-xs px-3 py-2 rounded-xl border outline-none font-mono ${
+                            settings.darkMode
+                              ? "bg-slate-950 border-slate-800 text-slate-100 focus:border-slate-750"
+                              : "bg-slate-50 border-slate-200 text-slate-850 focus:border-slate-300"
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const clean = customSiteInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+                            if (clean && !settings.customSites.includes(clean)) {
+                              setSettings(p => ({ ...p, customSites: [...p.customSites, clean] }));
+                            }
+                            setCustomSiteInput("");
+                          }}
+                          className="px-3 bg-slate-800 text-slate-100 rounded-xl hover:bg-slate-700 text-xs font-bold font-mono transition-all"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Part B: Categorised Sources list to add/remove */}
+                    <div className="space-y-3 pt-3 border-t border-slate-200/10">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+                          Explore & Toggle Sport-Specific Sources
+                        </span>
+                        <p className="text-[10px] text-slate-500">
+                          Sources are automatically mapped and filtered based on the sports of the teams you follow.
+                        </p>
+                      </div>
+
+                      {settings.teams.length === 0 && (
+                        <div className={`p-3 rounded-xl border text-[11px] font-medium flex items-center gap-2 ${
+                          settings.darkMode ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-800 shadow-sm'
+                        }`}>
+                          <span className="text-sm">⚠️</span>
+                          <span>No teams followed yet. Sources will activate when you follow at least one team.</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-3.5 pt-1">
+                        {/* Global & NA */}
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Global & North America
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {["espn.com", "sportsnet.ca", "tsn.ca", "nhl.com", "theathletic.com", "bleacherreport.com", "yahoosports.com"].map((site) => {
+                              const isPreferred = settings.customSites.includes(site);
+                              const isActive = actuallySearched.includes(site.toLowerCase().trim());
+                              return (
+                                <button
+                                  key={site}
+                                  type="button"
+                                  onClick={() => {
+                                    setSettings(p => {
+                                      const updated = isPreferred 
+                                        ? p.customSites.filter(s => s !== site)
+                                        : [...p.customSites, site];
+                                      return { ...p, customSites: updated };
+                                    });
+                                  }}
+                                  className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
+                                    isActive
+                                      ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
+                                      : isPreferred
+                                        ? (settings.darkMode 
+                                          ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                          : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
+                                        : (settings.darkMode
+                                          ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
+                                          : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
+                                  }`}
+                                >
+                                  <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
+                                  {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* UK & English Europe */}
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            United Kingdom & Global Soccer
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {["skysports.com", "bbc.co.uk", "fourfourtwo.com", "theguardian.com", "goal.com"].map((site) => {
+                              const isPreferred = settings.customSites.includes(site);
+                              const isActive = actuallySearched.includes(site.toLowerCase().trim());
+                              return (
+                                <button
+                                  key={site}
+                                  type="button"
+                                  onClick={() => {
+                                    setSettings(p => {
+                                      const updated = isPreferred 
+                                        ? p.customSites.filter(s => s !== site)
+                                        : [...p.customSites, site];
+                                      return { ...p, customSites: updated };
+                                    });
+                                  }}
+                                  className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
+                                    isActive
+                                      ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
+                                      : isPreferred
+                                        ? (settings.darkMode 
+                                          ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                          : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
+                                        : (settings.darkMode
+                                          ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
+                                          : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
+                                  }`}
+                                >
+                                  <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
+                                  {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Continental Europe */}
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Continental Europe (Local News & Newspapers)
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              "marca.com", "as.com", "mundodeportivo.com", 
+                              "gazzetta.it", "corrieredellosport.it", "tuttosport.com", 
+                              "kicker.de", "bild.de", "sport1.de", 
+                              "lequipe.fr", "francefootball.fr", "footmercato.net"
+                            ].map((site) => {
+                              const isPreferred = settings.customSites.includes(site);
+                              const isActive = actuallySearched.includes(site.toLowerCase().trim());
+                              return (
+                                <button
+                                  key={site}
+                                  type="button"
+                                  onClick={() => {
+                                    setSettings(p => {
+                                      const updated = isPreferred 
+                                        ? p.customSites.filter(s => s !== site)
+                                        : [...p.customSites, site];
+                                      return { ...p, customSites: updated };
+                                    });
+                                  }}
+                                  className={`text-[10px] px-2.5 py-1.5 rounded-lg border transition-all font-mono font-bold flex items-center gap-1.5 ${
+                                    isActive
+                                      ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
+                                      : isPreferred
+                                        ? (settings.darkMode 
+                                          ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                          : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
+                                        : (settings.darkMode
+                                          ? "bg-slate-950/40 border-slate-850 text-slate-650 hover:border-slate-750"
+                                          : "bg-white border-slate-205 text-slate-400 hover:bg-slate-50")
+                                  }`}
+                                >
+                                  <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : isPreferred ? 'bg-slate-400' : 'bg-transparent'}`} />
+                                  {isActive ? "✓ " : ""}{site} {isPreferred && !isActive && <span className="text-[8px] font-sans font-normal opacity-70">(unused)</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
                 )}
               </div>

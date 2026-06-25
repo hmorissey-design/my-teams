@@ -19,6 +19,7 @@ export interface TeamNews {
   error?: boolean;
   isQuotaExceeded?: boolean;
   originalErrorMessage?: string;
+  diagnostics?: any;
 }
 
 export interface AppSettings {
