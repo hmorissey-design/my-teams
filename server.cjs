@@ -30,23 +30,6 @@ var import_genai = require("@google/genai");
 import_dotenv.default.config();
 var app = (0, import_express.default)();
 var PORT = 3e3;
-var aiClient = null;
-function getGeminiClient() {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey) {
-      aiClient = new import_genai.GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build"
-          }
-        }
-      });
-    }
-  }
-  return aiClient;
-}
 app.use(import_express.default.json());
 function decodeGoogleNewsUrl(googleUrl) {
   try {
@@ -77,8 +60,13 @@ function decodeGoogleNewsUrl(googleUrl) {
 function isSpamArticle(title, url) {
   const titleLower = title.toLowerCase();
   let hostname = "";
+  let pathname = "";
+  let search = "";
   try {
-    hostname = new URL(url).hostname.toLowerCase();
+    const parsedUrl = new URL(url);
+    hostname = parsedUrl.hostname.toLowerCase();
+    pathname = parsedUrl.pathname.toLowerCase();
+    search = parsedUrl.search.toLowerCase();
   } catch (e) {
   }
   const TRUSTED_STREAM_DOMAINS = [
@@ -111,7 +99,9 @@ function isSpamArticle(title, url) {
     "hd stream",
     "stream online",
     "watch online",
-    "broadcast online"
+    "broadcast online",
+    "watch on tv",
+    "where to watch"
   ];
   const hasSpamPhrase = SPAM_PHRASES.some((phrase) => titleLower.includes(phrase));
   if (hasSpamPhrase) {
@@ -132,10 +122,47 @@ function isSpamArticle(title, url) {
     "cricfree",
     "crackstreams",
     "hacked",
-    "redirect"
+    "redirect",
+    "mshale.com",
+    "mshale",
+    "flohockey.tv",
+    "flohockey",
+    "hockeytv",
+    "dailyadvent",
+    "operanews",
+    "scores24",
+    "oddspedia",
+    "betting",
+    "odds",
+    "prediction",
+    "match-preview",
+    "ticket",
+    "stubhub",
+    "seatgeek",
+    "ticketmaster",
+    "vipleague",
+    "viprow"
   ];
   if (SPAM_DOMAINS.some((domain) => hostname.includes(domain))) {
     return true;
+  }
+  const isTrustedNewsDomain = TRUSTED_STREAM_DOMAINS.some((domain) => hostname.includes(domain));
+  if (!isTrustedNewsDomain) {
+    const NON_NEWS_PATH_PATTERNS = [
+      "/events/",
+      "/tickets/",
+      "/schedule/",
+      "/replays/",
+      "/product/",
+      "/shop/",
+      "/videos/"
+    ];
+    if (NON_NEWS_PATH_PATTERNS.some((pat) => pathname.includes(pat))) {
+      return true;
+    }
+    if (search.includes("playing=") || search.includes("eventid=")) {
+      return true;
+    }
   }
   const hostnameParts = hostname.split(".");
   if (hostnameParts.length > 1) {
@@ -408,66 +435,11 @@ app.post("/api/news", async (req, res) => {
             generalRssStatus = "Fetch Network Error";
             generalRssStatusText = err.message || String(err);
             generalRssError = err.stack || String(err);
-            console.warn(`General RSS feed fetch failed for ${team}, trying Gemini search grounding...`);
+            console.warn(`General RSS feed fetch failed for ${team}`);
           }
         }
         let summaryText = "";
-        if (filteredArticles.length === 0) {
-          geminiStatus = "Attempting...";
-          const ai = getGeminiClient();
-          if (ai) {
-            try {
-              console.log(`[Backup] Fetching via Gemini Search Grounding for ${team}...`);
-              const aiResponse = await ai.models.generateContent({
-                model: "gemini-3.5-flash",
-                contents: `Find the absolute latest news articles, match results, transfers, or official announcements about the sports team "${team}" in the last few days. Focus strictly on real news. Provide a brief 1-2 sentence overview of the team's current status.`,
-                config: {
-                  tools: [{ googleSearch: {} }]
-                }
-              });
-              const chunks = aiResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
-              if (chunks && chunks.length > 0) {
-                const aiArticles = [];
-                chunks.forEach((chunk) => {
-                  if (chunk.web && chunk.web.uri && chunk.web.title) {
-                    if (!isSpamArticle(chunk.web.title, chunk.web.uri)) {
-                      let parsedHost = "";
-                      try {
-                        parsedHost = new URL(chunk.web.uri).hostname.replace("www.", "");
-                      } catch (e) {
-                        parsedHost = "Google Search";
-                      }
-                      aiArticles.push({
-                        title: chunk.web.title,
-                        url: chunk.web.uri,
-                        timestamp: Date.now(),
-                        source: parsedHost
-                      });
-                    }
-                  }
-                });
-                if (aiArticles.length > 0) {
-                  filteredArticles = aiArticles;
-                  const textOut = aiResponse.text;
-                  if (textOut) {
-                    summaryText = `\u2022 Gemini AI Live Analysis: ${textOut.trim()}
-\u2022 Chronological live timeline of match reports and squad news compiled below.`;
-                  }
-                  geminiStatus = `Success: Grounded with ${aiArticles.length} web search chunks`;
-                } else {
-                  geminiStatus = "Success: No relevant articles found in grounding metadata";
-                }
-              } else {
-                geminiStatus = "Success: Grounding metadata returned no chunks";
-              }
-            } catch (aiErr) {
-              geminiStatus = `Failed: ${aiErr.message || String(aiErr)}`;
-              console.error(`Gemini Search Grounding fallback failed for ${team}:`, aiErr);
-            }
-          } else {
-            geminiStatus = "Failed: Gemini Client API key not found in server context";
-          }
-        }
+        geminiStatus = "Disabled (Relying purely on tracking feeds)";
         filteredArticles.sort((a, b) => b.timestamp - a.timestamp);
         const topArticles = filteredArticles.slice(0, 8);
         const links = topArticles.map((art) => ({
@@ -503,7 +475,7 @@ app.post("/api/news", async (req, res) => {
           error: topArticles.length === 0 && (rssStatus !== "200" || generalRssStatus && generalRssStatus !== "200")
         });
       } catch (e) {
-        console.error(`Error aggregating feed for ${team}:`, e);
+        console.warn(`Error aggregating feed for ${team}:`, e.message || e);
         results.push({
           team,
           summary: `\u2022 Offline Fallback: Temporary communication error fetching headlines for ${team} (${e.message || e}).
@@ -524,7 +496,7 @@ app.post("/api/news", async (req, res) => {
     }
     res.json({ results });
   } catch (error) {
-    console.error("News endpoint error:", error);
+    console.warn("News endpoint error:", error.message || error);
     res.status(500).json({ error: error.message || "Internal server error" });
   }
 });
