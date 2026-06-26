@@ -65,16 +65,75 @@ function decodeGoogleNewsUrl(googleUrl: string): string {
 
 function isSpamArticle(title: string, url: string): boolean {
   const titleLower = title.toLowerCase();
+
+  // 1. Check for spam sources declared in the Google News title itself (e.g. "Headline - Fathom Journal")
+  const sourceMatch = title.match(/\s+-\s+([^-]+)$/);
+  if (sourceMatch) {
+    const sourceName = sourceMatch[1].toLowerCase().trim();
+    const SPAM_SOURCES = [
+      "fathom journal", "fathom", "mshale", "operanews", "daily advent", 
+      "scores24", "oddspedia", "vipleague", "viprow"
+    ];
+    if (SPAM_SOURCES.some(s => sourceName.includes(s))) {
+      return true;
+    }
+  }
+
+  // 2. Check for parenthetical random alphanumeric code identifiers (e.g. "(Dp6SFCgXkF)")
+  // These are used by auto-generated spam scripts to bypass search duplicate filters.
+  const parentheticalMatch = title.match(/\(([A-Za-z0-9]{7,15})\)/);
+  if (parentheticalMatch) {
+    const code = parentheticalMatch[1];
+    const hasLower = /[a-z]/.test(code);
+    const hasUpper = /[A-Z]/.test(code);
+    const hasDigits = /[0-9]/.test(code);
+    // Spam codes have a mix of casing (e.g. Dp6SFCgXkF) or mix of letters and digits.
+    // Standard sports terms inside parentheses are e.g. "(QMJHL)" or "(Halifax)"
+    if ((hasDigits && (hasLower || hasUpper)) || (hasLower && /[A-Z]/.test(code.slice(1)))) {
+      return true;
+    }
+  }
+
+  // 3. Try to decode the Google News redirect URL to check the actual destination hostname
+  let resolvedUrl = url;
+  try {
+    if (url.includes("news.google.com")) {
+      const parts = url.split("/");
+      let b64 = parts[parts.length - 1];
+      if (b64.includes("?")) {
+        b64 = b64.split("?")[0];
+      }
+      b64 = b64.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4 !== 0) {
+        b64 += "=";
+      }
+      
+      let decoded = "";
+      if (typeof Buffer !== "undefined") {
+        decoded = Buffer.from(b64, "base64").toString("utf-8");
+      } else if (typeof atob !== "undefined") {
+        decoded = atob(b64);
+      }
+      
+      const match = decoded.match(/https?:\/\/[^\s"'\x00-\x1F\x7F-\x9F]+/);
+      if (match) {
+        resolvedUrl = match[0];
+      }
+    }
+  } catch (e) {
+    // ignore decoding errors
+  }
+
   let hostname = "";
   let pathname = "";
   let search = "";
   try {
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(resolvedUrl);
     hostname = parsedUrl.hostname.toLowerCase();
     pathname = parsedUrl.pathname.toLowerCase();
     search = parsedUrl.search.toLowerCase();
   } catch (e) {
-    // ignore
+    // ignore URL parsing errors
   }
 
   const TRUSTED_STREAM_DOMAINS = [
