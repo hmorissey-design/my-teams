@@ -7,6 +7,26 @@
   --font-mono: "Fira Code", monospace;
 }
 
+/* 
+  Elegant, eye-friendly, and battery-friendly soft-light theme.
+  Overrides default Tailwind colors under light mode only.
+*/
+:root:not(.dark) {
+  --color-slate-50: #efece3;    /* Softer, warm stone background (easy on the eyes & battery) */
+  --color-white: #faf9f5;       /* Warm milk/alabaster card background */
+  --color-slate-100: #e2ded3;   /* Muted warm grey for inactive/secondary states */
+  --color-slate-200: #dad6c7;   /* Soft, warm borders instead of stark cool grey */
+  --color-slate-250: #cac5b5;   /* Warm mid-level border */
+  --color-slate-300: #b8b3a1;   /* Defined warm borders */
+  --color-slate-400: #807b6d;   /* Muted sand-charcoal text labels */
+  --color-slate-500: #6b675b;   /* Secondary warm-slate text */
+  --color-slate-600: #555146;   /* Rich body text */
+  --color-slate-705: #3c3931;   /* Bold body text */
+  --color-slate-750: #2d2b25;   /* Headers & strong text */
+  --color-slate-800: #21201c;   /* Soft warm espresso text (comfortable reading contrast) */
+  --color-slate-900: #171614;   /* Deep charcoal accents */
+}
+
 /* Custom scrollbar styles */
 ::-webkit-scrollbar {
   width: 6px;
