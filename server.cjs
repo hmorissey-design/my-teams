@@ -59,11 +59,64 @@ function decodeGoogleNewsUrl(googleUrl) {
 }
 function isSpamArticle(title, url) {
   const titleLower = title.toLowerCase();
+  const sourceMatch = title.match(/\s+-\s+([^-]+)$/);
+  if (sourceMatch) {
+    const sourceName = sourceMatch[1].toLowerCase().trim();
+    const SPAM_SOURCES = [
+      "fathom journal",
+      "fathom",
+      "mshale",
+      "operanews",
+      "daily advent",
+      "scores24",
+      "oddspedia",
+      "vipleague",
+      "viprow"
+    ];
+    if (SPAM_SOURCES.some((s) => sourceName.includes(s))) {
+      return true;
+    }
+  }
+  const parentheticalMatch = title.match(/\(([A-Za-z0-9]{7,15})\)/);
+  if (parentheticalMatch) {
+    const code = parentheticalMatch[1];
+    const hasLower = /[a-z]/.test(code);
+    const hasUpper = /[A-Z]/.test(code);
+    const hasDigits = /[0-9]/.test(code);
+    if (hasDigits && (hasLower || hasUpper) || hasLower && /[A-Z]/.test(code.slice(1))) {
+      return true;
+    }
+  }
+  let resolvedUrl = url;
+  try {
+    if (url.includes("news.google.com")) {
+      const parts = url.split("/");
+      let b64 = parts[parts.length - 1];
+      if (b64.includes("?")) {
+        b64 = b64.split("?")[0];
+      }
+      b64 = b64.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4 !== 0) {
+        b64 += "=";
+      }
+      let decoded = "";
+      if (typeof Buffer !== "undefined") {
+        decoded = Buffer.from(b64, "base64").toString("utf-8");
+      } else if (typeof atob !== "undefined") {
+        decoded = atob(b64);
+      }
+      const match = decoded.match(/https?:\/\/[^\s"'\x00-\x1F\x7F-\x9F]+/);
+      if (match) {
+        resolvedUrl = match[0];
+      }
+    }
+  } catch (e) {
+  }
   let hostname = "";
   let pathname = "";
   let search = "";
   try {
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(resolvedUrl);
     hostname = parsedUrl.hostname.toLowerCase();
     pathname = parsedUrl.pathname.toLowerCase();
     search = parsedUrl.search.toLowerCase();
