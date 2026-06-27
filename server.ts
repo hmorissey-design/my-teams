@@ -711,6 +711,247 @@ app.post("/api/news", async (req, res) => {
   }
 });
 
+// Helper to check if a team name matches the ESPN competitor displayName or name
+function matchesTeam(userTeamName: string, competitorDisplayName: string, competitorName: string): boolean {
+  const userLower = userTeamName.toLowerCase().trim();
+  const compDisplayLower = competitorDisplayName.toLowerCase().trim();
+  const compNameLower = competitorName.toLowerCase().trim();
+
+  // 1. Direct match
+  if (compDisplayLower === userLower || compDisplayLower.startsWith(userLower) || userLower.startsWith(compDisplayLower)) {
+    return true;
+  }
+
+  // 2. Token overlap (ignoring common noise words)
+  const cleanAndTokenize = (str: string) => {
+    return str
+      .toLowerCase()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !["the", "and", "team", "club", "sports", "news", "fc", "cf", "sc", "national", "association", "league", "de", "la", "el", "un"].includes(w));
+  };
+
+  const userTokens = cleanAndTokenize(userTeamName);
+  const compDisplayTokens = cleanAndTokenize(competitorDisplayName);
+  const compNameTokens = cleanAndTokenize(competitorName);
+
+  if (userTokens.length === 0 || compDisplayTokens.length === 0) {
+    return false;
+  }
+
+  // Common/loose adjectives that shouldn't be the sole match if other tokens exist
+  const looseWords = ["real", "city", "united", "town", "county", "athletic", "rovers", "wanderers", "albion", "club", "saint", "st"];
+
+  // Find overlapping tokens
+  const overlap = userTokens.filter(token => 
+    compDisplayTokens.includes(token) || compNameTokens.includes(token)
+  );
+
+  if (overlap.length === 0) {
+    return false;
+  }
+
+  // If there's an overlap, but all overlapping tokens are loose words,
+  // we require at least one non-loose word overlap, or that they represent a high proportion of the name
+  const hasSpecificOverlap = overlap.some(t => !looseWords.includes(t));
+  if (hasSpecificOverlap) {
+    return true;
+  }
+
+  // If it's a loose word, they must share the entire token set or at least have a very close match
+  return userTokens.every(t => compDisplayTokens.includes(t)) || compDisplayTokens.every(t => userTokens.includes(t));
+}
+
+// Helper to format upcoming game dates
+function formatGameDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    
+    const isToday = d.toDateString() === now.toDateString();
+    
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = d.toDateString() === tomorrow.toDateString();
+    
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    if (isToday) {
+      return `Today ${timeStr}`;
+    } else if (isTomorrow) {
+      return `Tomorrow ${timeStr}`;
+    } else {
+      const monthStr = d.toLocaleDateString([], { month: 'short' });
+      const dayStr = d.toLocaleDateString([], { day: 'numeric' });
+      return `${monthStr} ${dayStr} ${timeStr}`;
+    }
+  } catch {
+    return "";
+  }
+}
+
+// Global in-memory cache for scoreboard data
+interface ScoreboardCache {
+  data: any;
+  timestamp: number;
+}
+const globalScoreboardCache: Record<string, ScoreboardCache> = {};
+const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
+
+// Safe cached fetch
+async function getCachedScoreboard(key: string, url: string): Promise<any> {
+  const cached = globalScoreboardCache[key];
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json();
+      globalScoreboardCache[key] = { data, timestamp: now };
+      return data;
+    }
+  } catch (e) {
+    console.warn(`Failed to fetch scoreboard for ${key}:`, e);
+  }
+  return cached ? cached.data : null;
+}
+
+const SCOREBOARD_URLS = {
+  nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+  ahl: "https://site.api.espn.com/apis/site/v2/sports/hockey/ahl/scoreboard",
+  mlb: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+  nba: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  premier: "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+  mls: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
+  laliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+  seriea: "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+  bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+  ligue1: "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+};
+
+// API Endpoint to fetch scores and game statuses for custom teams list
+app.post("/api/scores", async (req, res) => {
+  try {
+    const { teams } = req.body;
+    if (!Array.isArray(teams) || teams.length === 0) {
+      return res.json({ scores: {} });
+    }
+
+    // Fetch all scoreboards in parallel (utilizes global in-memory cache)
+    const keys = Object.keys(SCOREBOARD_URLS);
+    const boards = await Promise.all(
+      keys.map(async (key) => {
+        const data = await getCachedScoreboard(key, SCOREBOARD_URLS[key as keyof typeof SCOREBOARD_URLS]);
+        return { key, data };
+      })
+    );
+
+    const scores: Record<string, any> = {};
+
+    for (const teamName of teams) {
+      const matchedGames: any[] = [];
+
+      for (const board of boards) {
+        if (!board.data || !Array.isArray(board.data.events)) continue;
+
+        for (const event of board.data.events) {
+          const competition = event.competitions?.[0];
+          if (!competition || !Array.isArray(competition.competitors)) continue;
+
+          for (const competitor of competition.competitors) {
+            const teamObj = competitor.team;
+            if (!teamObj) continue;
+
+            if (matchesTeam(teamName, teamObj.displayName || "", teamObj.name || "")) {
+              matchedGames.push({
+                event,
+                competition,
+                matchedCompetitor: competitor,
+                sportKey: board.key
+              });
+            }
+          }
+        }
+      }
+
+      if (matchedGames.length > 0) {
+        // Sort matched games so live/active games take highest priority, then completed, then upcoming
+        matchedGames.sort((a, b) => {
+          const stateScore = (g: any) => {
+            const state = g.event.status?.type?.state;
+            if (state === "in") return 3;   // Live
+            if (state === "post") return 2; // Finished
+            return 1;                       // Scheduled/Upcoming
+          };
+          
+          const scoreA = stateScore(a);
+          const scoreB = stateScore(b);
+          if (scoreA !== scoreB) {
+            return scoreB - scoreA;
+          }
+          
+          // Same state: pick the one closest to now
+          const dateA = new Date(a.event.date).getTime();
+          const dateB = new Date(b.event.date).getTime();
+          const now = Date.now();
+          return Math.abs(dateA - now) - Math.abs(dateB - now);
+        });
+
+        const bestGame = matchedGames[0];
+        const { event, competition, matchedCompetitor } = bestGame;
+        const opponent = competition.competitors.find((c: any) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
+
+        const state = event.status?.type?.state; // "pre" | "in" | "post"
+        const detail = event.status?.type?.detail || "";
+
+        const homeCompetitor = competition.competitors.find((c: any) => c.homeAway === "home");
+        const awayCompetitor = competition.competitors.find((c: any) => c.homeAway === "away");
+        const homeName = homeCompetitor?.team?.abbreviation || homeCompetitor?.team?.name || "Home";
+        const awayName = awayCompetitor?.team?.abbreviation || awayCompetitor?.team?.name || "Away";
+        const homeScore = homeCompetitor?.score || "0";
+        const awayScore = awayCompetitor?.score || "0";
+
+        let scoreText = "";
+        if (state === "in") {
+          scoreText = `Live: ${awayName} ${awayScore} @ ${homeName} ${homeScore} (${detail})`;
+        } else if (state === "post") {
+          scoreText = `Final: ${awayName} ${awayScore}, ${homeName} ${homeScore}`;
+        } else {
+          const isHome = matchedCompetitor.homeAway === "home";
+          const oppName = opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp";
+          const formattedDate = formatGameDate(event.date);
+          scoreText = `${formattedDate} ${isHome ? "vs" : "@"} ${oppName}`;
+        }
+
+        scores[teamName] = {
+          state,
+          detail,
+          scoreText,
+          sport: bestGame.sportKey,
+          eventDate: event.date,
+          opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
+          isHome: matchedCompetitor.homeAway === "home"
+        };
+      }
+    }
+
+    res.json({ scores });
+  } catch (error: any) {
+    console.warn("Scores endpoint error:", error.message || error);
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
+
 // Serve frontend build or compile with Vite in dev mode
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
