@@ -71,7 +71,10 @@ function isSpamArticle(title, url) {
       "scores24",
       "oddspedia",
       "vipleague",
-      "viprow"
+      "viprow",
+      "flohockey.tv",
+      "flohockey",
+      "hockeytv"
     ];
     if (SPAM_SOURCES.some((s) => sourceName.includes(s))) {
       return true;
