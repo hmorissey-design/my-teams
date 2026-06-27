@@ -274,6 +274,68 @@ function getDisplayScoreText(scoreData: any): string {
   }
 }
 
+const SCOREBOARD_URLS = {
+  nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+  ahl: "https://site.api.espn.com/apis/site/v2/sports/hockey/ahl/scoreboard",
+  mlb: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+  nba: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  premier: "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+  mls: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
+  laliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+  seriea: "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+  bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+  ligue1: "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+};
+
+function matchesTeamClient(userTeamName: string, competitorDisplayName: string, competitorName: string): boolean {
+  const userLower = userTeamName.toLowerCase().trim();
+  const compDisplayLower = competitorDisplayName.toLowerCase().trim();
+  const compNameLower = competitorName.toLowerCase().trim();
+
+  // 1. Direct match
+  if (compDisplayLower === userLower || compDisplayLower.startsWith(userLower) || userLower.startsWith(compDisplayLower)) {
+    return true;
+  }
+
+  // 2. Token overlap (ignoring common noise words)
+  const cleanAndTokenize = (str: string) => {
+    return str
+      .toLowerCase()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !["the", "and", "team", "club", "sports", "news", "fc", "cf", "sc", "national", "association", "league", "de", "la", "el", "un"].includes(w));
+  };
+
+  const userTokens = cleanAndTokenize(userTeamName);
+  const compDisplayTokens = cleanAndTokenize(competitorDisplayName);
+  const compNameTokens = cleanAndTokenize(competitorName);
+
+  if (userTokens.length === 0 || compDisplayTokens.length === 0) {
+    return false;
+  }
+
+  // Common/loose adjectives that shouldn't be the sole match if other tokens exist
+  const looseWords = ["real", "city", "united", "town", "county", "athletic", "rovers", "wanderers", "albion", "club", "saint", "st"];
+
+  // Find overlapping tokens
+  const overlap = userTokens.filter(token => 
+    compDisplayTokens.includes(token) || compNameTokens.includes(token)
+  );
+
+  if (overlap.length === 0) {
+    return false;
+  }
+
+  const hasSpecificOverlap = overlap.some(t => !looseWords.includes(t));
+  if (hasSpecificOverlap) {
+    return true;
+  }
+
+  return userTokens.every(t => compDisplayTokens.includes(t)) || compDisplayTokens.every(t => userTokens.includes(t));
+}
+
 export default function App() {
   // --- Persistent Local State ---
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -393,6 +455,112 @@ export default function App() {
   const [teamScores, setTeamScores] = useState<Record<string, any>>({});
   const [scoresLoading, setScoresLoading] = useState(false);
 
+  const fetchScoresDirectlyOnClient = async (targetTeams: string[]) => {
+    try {
+      const keys = Object.keys(SCOREBOARD_URLS) as Array<keyof typeof SCOREBOARD_URLS>;
+      const boards = await Promise.all(
+        keys.map(async (key) => {
+          try {
+            const res = await fetch(SCOREBOARD_URLS[key]);
+            if (res.ok) {
+              const data = await res.json();
+              return { key, data };
+            }
+          } catch (err) {
+            console.warn(`Direct client fetch failed for ${key}:`, err);
+          }
+          return { key, data: null };
+        })
+      );
+
+      const clientScores: Record<string, any> = {};
+
+      for (const teamName of targetTeams) {
+        const matchedGames: any[] = [];
+
+        for (const board of boards) {
+          if (!board.data || !Array.isArray(board.data.events)) continue;
+
+          for (const event of board.data.events) {
+            const competition = event.competitions?.[0];
+            if (!competition || !Array.isArray(competition.competitors)) continue;
+
+            for (const competitor of competition.competitors) {
+              const teamObj = competitor.team;
+              if (!teamObj) continue;
+
+              if (matchesTeamClient(teamName, teamObj.displayName || "", teamObj.name || "")) {
+                matchedGames.push({
+                  event,
+                  competition,
+                  matchedCompetitor: competitor,
+                  sportKey: board.key
+                });
+              }
+            }
+          }
+        }
+
+        if (matchedGames.length > 0) {
+          matchedGames.sort((a, b) => {
+            const stateScore = (g: any) => {
+              const s = g.event.status?.type?.state;
+              if (s === "in") return 3;   // Live
+              if (s === "post") return 2; // Finished
+              return 1;                   // Scheduled
+            };
+            
+            const scoreA = stateScore(a);
+            const scoreB = stateScore(b);
+            if (scoreA !== scoreB) {
+              return scoreB - scoreA;
+            }
+            
+            const dateA = new Date(a.event.date).getTime();
+            const dateB = new Date(b.event.date).getTime();
+            const now = Date.now();
+            return Math.abs(dateA - now) - Math.abs(dateB - now);
+          });
+
+          const bestGame = matchedGames[0];
+          const { event, competition, matchedCompetitor } = bestGame;
+          const opponent = competition.competitors.find((c: any) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
+
+          const state = event.status?.type?.state;
+          const detail = event.status?.type?.detail || "";
+
+          const homeCompetitor = competition.competitors.find((c: any) => c.homeAway === "home");
+          const awayCompetitor = competition.competitors.find((c: any) => c.homeAway === "away");
+          const homeName = homeCompetitor?.team?.abbreviation || homeCompetitor?.team?.name || "Home";
+          const awayName = awayCompetitor?.team?.abbreviation || awayCompetitor?.team?.name || "Away";
+          const homeScore = homeCompetitor?.score || "0";
+          const awayScore = awayCompetitor?.score || "0";
+
+          let scoreText = "";
+          if (state === "in") {
+            scoreText = `Live: ${awayName} ${awayScore} @ ${homeName} ${homeScore} (${detail})`;
+          } else if (state === "post") {
+            scoreText = `Final: ${awayName} ${awayScore}, ${homeName} ${homeScore}`;
+          }
+
+          clientScores[teamName] = {
+            state,
+            detail,
+            scoreText,
+            sport: bestGame.sportKey,
+            eventDate: event.date,
+            opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
+            isHome: matchedCompetitor.homeAway === "home"
+          };
+        }
+      }
+
+      setTeamScores(prev => ({ ...prev, ...clientScores }));
+    } catch (err) {
+      console.warn("Direct client scores processing failed:", err);
+    }
+  };
+
   const fetchScores = async (teamsToFetch?: string[]) => {
     const targetTeams = teamsToFetch || settings.teams;
     if (targetTeams.length === 0) return;
@@ -410,9 +578,13 @@ export default function App() {
         if (data.scores) {
           setTeamScores(prev => ({ ...prev, ...data.scores }));
         }
+      } else {
+        // Fallback to client-side direct fetch if API returns an error or is a 404 (static deployment)
+        await fetchScoresDirectlyOnClient(targetTeams);
       }
     } catch (e) {
-      console.warn("Failed to fetch live scores:", e);
+      console.warn("Failed to fetch live scores from server backend, falling back to direct client-side fetch:", e);
+      await fetchScoresDirectlyOnClient(targetTeams);
     } finally {
       setScoresLoading(false);
     }
