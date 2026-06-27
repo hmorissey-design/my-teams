@@ -556,6 +556,189 @@ app.post("/api/news", async (req, res) => {
     res.status(500).json({ error: error.message || "Internal server error" });
   }
 });
+function matchesTeam(userTeamName, competitorDisplayName, competitorName) {
+  const userLower = userTeamName.toLowerCase().trim();
+  const compDisplayLower = competitorDisplayName.toLowerCase().trim();
+  const compNameLower = competitorName.toLowerCase().trim();
+  if (compDisplayLower === userLower || compDisplayLower.startsWith(userLower) || userLower.startsWith(compDisplayLower)) {
+    return true;
+  }
+  const cleanAndTokenize = (str) => {
+    return str.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").split(/\s+/).filter((w) => w.length >= 3 && !["the", "and", "team", "club", "sports", "news", "fc", "cf", "sc", "national", "association", "league", "de", "la", "el", "un"].includes(w));
+  };
+  const userTokens = cleanAndTokenize(userTeamName);
+  const compDisplayTokens = cleanAndTokenize(competitorDisplayName);
+  const compNameTokens = cleanAndTokenize(competitorName);
+  if (userTokens.length === 0 || compDisplayTokens.length === 0) {
+    return false;
+  }
+  const looseWords = ["real", "city", "united", "town", "county", "athletic", "rovers", "wanderers", "albion", "club", "saint", "st"];
+  const overlap = userTokens.filter(
+    (token) => compDisplayTokens.includes(token) || compNameTokens.includes(token)
+  );
+  if (overlap.length === 0) {
+    return false;
+  }
+  const hasSpecificOverlap = overlap.some((t) => !looseWords.includes(t));
+  if (hasSpecificOverlap) {
+    return true;
+  }
+  return userTokens.every((t) => compDisplayTokens.includes(t)) || compDisplayTokens.every((t) => userTokens.includes(t));
+}
+function formatGameDate(dateStr) {
+  try {
+    const d = new Date(dateStr);
+    const now = /* @__PURE__ */ new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const tomorrow = /* @__PURE__ */ new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = d.toDateString() === tomorrow.toDateString();
+    const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (isToday) {
+      return `Today ${timeStr}`;
+    } else if (isTomorrow) {
+      return `Tomorrow ${timeStr}`;
+    } else {
+      const monthStr = d.toLocaleDateString([], { month: "short" });
+      const dayStr = d.toLocaleDateString([], { day: "numeric" });
+      return `${monthStr} ${dayStr} ${timeStr}`;
+    }
+  } catch {
+    return "";
+  }
+}
+var globalScoreboardCache = {};
+var CACHE_TTL_MS = 60 * 1e3;
+async function getCachedScoreboard(key, url) {
+  const cached = globalScoreboardCache[key];
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4e3);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json();
+      globalScoreboardCache[key] = { data, timestamp: now };
+      return data;
+    }
+  } catch (e) {
+    console.warn(`Failed to fetch scoreboard for ${key}:`, e);
+  }
+  return cached ? cached.data : null;
+}
+var SCOREBOARD_URLS = {
+  nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+  ahl: "https://site.api.espn.com/apis/site/v2/sports/hockey/ahl/scoreboard",
+  mlb: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+  nba: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  premier: "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+  mls: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
+  laliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+  seriea: "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+  bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+  ligue1: "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+};
+app.post("/api/scores", async (req, res) => {
+  try {
+    const { teams } = req.body;
+    if (!Array.isArray(teams) || teams.length === 0) {
+      return res.json({ scores: {} });
+    }
+    const keys = Object.keys(SCOREBOARD_URLS);
+    const boards = await Promise.all(
+      keys.map(async (key) => {
+        const data = await getCachedScoreboard(key, SCOREBOARD_URLS[key]);
+        return { key, data };
+      })
+    );
+    const scores = {};
+    for (const teamName of teams) {
+      const matchedGames = [];
+      for (const board of boards) {
+        if (!board.data || !Array.isArray(board.data.events)) continue;
+        for (const event of board.data.events) {
+          const competition = event.competitions?.[0];
+          if (!competition || !Array.isArray(competition.competitors)) continue;
+          for (const competitor of competition.competitors) {
+            const teamObj = competitor.team;
+            if (!teamObj) continue;
+            if (matchesTeam(teamName, teamObj.displayName || "", teamObj.name || "")) {
+              matchedGames.push({
+                event,
+                competition,
+                matchedCompetitor: competitor,
+                sportKey: board.key
+              });
+            }
+          }
+        }
+      }
+      if (matchedGames.length > 0) {
+        matchedGames.sort((a, b) => {
+          const stateScore = (g) => {
+            const state2 = g.event.status?.type?.state;
+            if (state2 === "in") return 3;
+            if (state2 === "post") return 2;
+            return 1;
+          };
+          const scoreA = stateScore(a);
+          const scoreB = stateScore(b);
+          if (scoreA !== scoreB) {
+            return scoreB - scoreA;
+          }
+          const dateA = new Date(a.event.date).getTime();
+          const dateB = new Date(b.event.date).getTime();
+          const now = Date.now();
+          return Math.abs(dateA - now) - Math.abs(dateB - now);
+        });
+        const bestGame = matchedGames[0];
+        const { event, competition, matchedCompetitor } = bestGame;
+        const opponent = competition.competitors.find((c) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
+        const state = event.status?.type?.state;
+        const detail = event.status?.type?.detail || "";
+        const homeCompetitor = competition.competitors.find((c) => c.homeAway === "home");
+        const awayCompetitor = competition.competitors.find((c) => c.homeAway === "away");
+        const homeName = homeCompetitor?.team?.abbreviation || homeCompetitor?.team?.name || "Home";
+        const awayName = awayCompetitor?.team?.abbreviation || awayCompetitor?.team?.name || "Away";
+        const homeScore = homeCompetitor?.score || "0";
+        const awayScore = awayCompetitor?.score || "0";
+        let scoreText = "";
+        if (state === "in") {
+          scoreText = `Live: ${awayName} ${awayScore} @ ${homeName} ${homeScore} (${detail})`;
+        } else if (state === "post") {
+          scoreText = `Final: ${awayName} ${awayScore}, ${homeName} ${homeScore}`;
+        } else {
+          const isHome = matchedCompetitor.homeAway === "home";
+          const oppName = opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp";
+          const formattedDate = formatGameDate(event.date);
+          scoreText = `${formattedDate} ${isHome ? "vs" : "@"} ${oppName}`;
+        }
+        scores[teamName] = {
+          state,
+          detail,
+          scoreText,
+          sport: bestGame.sportKey,
+          eventDate: event.date,
+          opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
+          isHome: matchedCompetitor.homeAway === "home"
+        };
+      }
+    }
+    res.json({ scores });
+  } catch (error) {
+    console.warn("Scores endpoint error:", error.message || error);
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({
