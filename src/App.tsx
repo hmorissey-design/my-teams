@@ -1110,127 +1110,16 @@ export default function App() {
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>Setup & Config</span>
+            <span>Choose Teams and Preferences</span>
           </button>
         </div>
       </nav>
 
       {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 self-start overflow-y-auto">
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6 self-start overflow-y-auto">
         
-        {/* LEFT COLUMN: TEAM CONTROLLER & PRESETS */}
-        <div className="lg:col-span-1 flex flex-col gap-5">
-          {/* Tracked Selector & Live Search */}
-          <div className={`p-4 rounded-2xl border transition-all ${settings.darkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <button
-              type="button"
-              onClick={() => setIsMyTrackedTeamsExpanded(!isMyTrackedTeamsExpanded)}
-              className="w-full text-[11px] uppercase tracking-wider text-slate-400 font-bold flex items-center justify-between text-left transition-colors duration-150 py-0.5"
-            >
-              <span className="flex items-center gap-1.5 hover:text-slate-200 transition-colors">
-                {isMyTrackedTeamsExpanded ? (
-                  <ChevronDown className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                ) : (
-                  <ChevronRight className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                )}
-                Teams I'm following
-              </span>
-              <span className="text-[9px] px-1.5 py-0.2 bg-slate-805 text-slate-300 rounded-full font-mono font-bold">{settings.teams.length}</span>
-            </button>
-
-            {isMyTrackedTeamsExpanded && (
-              <div className="mt-4 pt-4 border-t border-slate-800 space-y-4">
-                {settings.teams.length === 0 ? (
-                  <div className="text-center py-4 px-2">
-                    <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2 opacity-80" />
-                    <p className="text-xs text-slate-400 italic">No teams saved. Select a preset below or type a custom name to track news.</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1 font-sans">
-                    <button
-                      onClick={() => setSelectedTeamTab("All")}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-between ${
-                        selectedTeamTab === "All"
-                          ? "bg-slate-800 text-emerald-400"
-                          : "hover:bg-slate-800/45 text-slate-400"
-                      }`}
-                    >
-                      <span>All Teams ({settings.teams.length})</span>
-                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div>
-                    </button>
-                    {settings.teams.map((team) => (
-                      <div 
-                        key={team} 
-                        className={`group flex items-center justify-between p-1.5 pl-3 rounded-xl transition-all ${
-                          selectedTeamTab === team 
-                            ? 'bg-slate-800 text-slate-100 font-bold' 
-                            : 'hover:bg-slate-800/40 text-slate-400'
-                        }`}
-                      >
-                        <button 
-                          onClick={() => setSelectedTeamTab(team)}
-                          className="flex-1 text-left text-xs font-medium truncate"
-                        >
-                          {team}
-                        </button>
-                        <button 
-                          onClick={() => handleRemoveTeam(team)}
-                          title={`Remove ${team}`}
-                          className="text-slate-500 hover:text-red-400 p-1 rounded-lg transition-colors opacity-80"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Custom add field */}
-                <div className="pt-4 border-t border-slate-800 flex flex-col gap-2.5">
-                  <form onSubmit={(e) => { e.preventDefault(); handleAddTeam(customTeamInput); }} className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Enter custom team..."
-                      value={customTeamInput}
-                      onChange={(e) => setCustomTeamInput(e.target.value)}
-                      className={`flex-1 text-xs px-3 py-2 rounded-xl outline-none border transition-all ${
-                        settings.darkMode 
-                          ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500 focus:border-slate-700' 
-                          : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-slate-350'
-                      }`}
-                    />
-                    <button
-                      type="submit"
-                      disabled={!customTeamInput.trim()}
-                      className="p-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 rounded-xl transition-all active:scale-95"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </form>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSettingsTab("teams");
-                      setShowSettings(true);
-                    }}
-                    className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
-                      settings.darkMode
-                        ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
-                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-850 border-emerald-250 shadow-sm'
-                    }`}
-                  >
-                    <Compass className="w-4 h-4 text-emerald-500" />
-                    <span>Browse Preset Choices...</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: NEWS GRID CONTAINER */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
+        {/* NEWS CONTAINER */}
+        <div className="w-full flex flex-col gap-6">
           
           {/* Global Alert Notification / Fetch status */}
           {errorMsg && (
@@ -1294,6 +1183,39 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* HORIZONTAL TEAM FILTER PILLS */}
+              {settings.teams.length > 1 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none border-b border-dashed border-slate-200/50 dark:border-slate-800/50 pb-3">
+                  <button
+                    onClick={() => setSelectedTeamTab("All")}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 ${
+                      selectedTeamTab === "All"
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-sm font-extrabold'
+                        : settings.darkMode
+                          ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 shadow-xs'
+                    }`}
+                  >
+                    All Teams ({settings.teams.length})
+                  </button>
+                  {settings.teams.map((team) => (
+                    <button
+                      key={team}
+                      onClick={() => setSelectedTeamTab(team)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 ${
+                        selectedTeamTab === team
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-sm font-extrabold'
+                          : settings.darkMode
+                            ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 shadow-xs'
+                      }`}
+                    >
+                      {team}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* News Panels (Separated by team) */}
               <div className="space-y-6">
@@ -2150,52 +2072,27 @@ export default function App() {
                 </button>
               </div>
 
-              {/* SECTION 7: READ HISTORY */}
+              {/* SECTION 7: CLEAR HISTORY */}
               <div className={`p-4 rounded-xl border flex items-center justify-between ${
                 settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
               }`}>
                 <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase block">Clear Read History</span>
-                  <span className="text-[11px] text-slate-550 block">Reset color styling for already clicked article links.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewedLinks([]);
-                    localStorage.removeItem("my_teams_viewed_links");
-                  }}
-                  disabled={viewedLinks.length === 0}
-                  className={`p-2.5 rounded-xl border transition-all text-xs font-bold shrink-0 ${
-                    viewedLinks.length === 0
-                      ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-600'
-                      : settings.darkMode 
-                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20' 
-                        : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 shadow-sm'
-                  }`}
-                >
-                  Clear ({viewedLinks.length})
-                </button>
-              </div>
-
-              {/* SECTION 8: FEED CACHE RESET */}
-              <div className={`p-4 rounded-xl border flex items-center justify-between ${
-                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-sm'
-              }`}>
-                <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase block">Reset Live Feed Cache</span>
-                  <span className="text-[11px] text-slate-550 block">Wipe locally saved stories and trigger a clean filter feed.</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase block">Clear History</span>
+                  <span className="text-[11px] text-slate-550 block">Wipe downloaded stories and reset clicked/read links to start completely fresh.</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     clearFeedCache();
+                    setViewedLinks([]);
+                    localStorage.removeItem("my_teams_viewed_links");
                     setOriginalSettings(null);
                     setShowSettings(false);
                   }}
                   className="p-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shadow-sm shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Reset Cache</span>
+                  <span>Clear History</span>
                 </button>
               </div>
 
