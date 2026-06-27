@@ -8,23 +8,23 @@
 }
 
 /* 
-  Elegant, eye-friendly, and battery-friendly soft-light theme.
-  Overrides default Tailwind colors under light mode only.
+  Elegant, eye-friendly, and battery-friendly cozy book-like tan and sand theme.
+  Designed specifically for low eye-strain and excellent high-contrast readability on mobile screens.
 */
 :root:not(.dark) {
-  --color-slate-50: #efece3;    /* Softer, warm stone background (easy on the eyes & battery) */
-  --color-white: #faf9f5;       /* Warm milk/alabaster card background */
-  --color-slate-100: #e2ded3;   /* Muted warm grey for inactive/secondary states */
-  --color-slate-200: #dad6c7;   /* Soft, warm borders instead of stark cool grey */
-  --color-slate-250: #cac5b5;   /* Warm mid-level border */
-  --color-slate-300: #b8b3a1;   /* Defined warm borders */
-  --color-slate-400: #807b6d;   /* Muted sand-charcoal text labels */
-  --color-slate-500: #6b675b;   /* Secondary warm-slate text */
-  --color-slate-600: #555146;   /* Rich body text */
-  --color-slate-705: #3c3931;   /* Bold body text */
-  --color-slate-750: #2d2b25;   /* Headers & strong text */
-  --color-slate-800: #21201c;   /* Soft warm espresso text (comfortable reading contrast) */
-  --color-slate-900: #171614;   /* Deep charcoal accents */
+  --color-slate-50: #ebdcc9;    /* Cozy warm sand/linen background (low glare, easy on eyes & battery) */
+  --color-white: #faf6f0;       /* Rich milk/parchment card background */
+  --color-slate-100: #dfcea9;   /* Slightly deeper warm sand/tan for active tabs and states */
+  --color-slate-200: #d4be9a;   /* Warm golden-sand borders */
+  --color-slate-250: #c5ae8b;   /* Mid-level sand border */
+  --color-slate-300: #b49a75;   /* Accentuated warm brass/sepia borders */
+  --color-slate-400: #7d684e;   /* Hazelnut-tan labels and muted text */
+  --color-slate-500: #655038;   /* Medium roast coffee secondary text */
+  --color-slate-600: #4a3721;   /* Rich dark cocoa text for highly legible body copy */
+  --color-slate-705: #3b2a18;   /* Bold dark chocolate body text */
+  --color-slate-750: #2c1e0e;   /* Headers and high-emphasis titles */
+  --color-slate-800: #201509;   /* Crisp, deep espresso text for perfect reading contrast */
+  --color-slate-900: #150d03;   /* Deepest coffee-bean accents and lines */
 }
 
 /* Custom scrollbar styles */

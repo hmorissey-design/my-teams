@@ -464,7 +464,7 @@ export default function App() {
       const sourceName = sourceMatch[1].toLowerCase().trim();
       const SPAM_SOURCES = [
         "fathom journal", "fathom", "mshale", "operanews", "daily advent", 
-        "scores24", "oddspedia", "vipleague", "viprow"
+        "scores24", "oddspedia", "vipleague", "viprow", "flohockey.tv", "flohockey", "hockeytv"
       ];
       if (SPAM_SOURCES.some(s => sourceName.includes(s))) {
         return true;
