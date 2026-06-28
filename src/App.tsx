@@ -528,7 +528,7 @@ export default function App() {
   const [customTeamInput, setCustomTeamInput] = useState("");
   const [customSiteInput, setCustomSiteInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"teams" | "engine">("teams");
+  const [settingsMode, setSettingsMode] = useState<"all" | "preferences">("all");
   const [originalSettings, setOriginalSettings] = useState<AppSettings | null>(null);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
   const [showSourcesSelector, setShowSourcesSelector] = useState(false);
@@ -1476,16 +1476,36 @@ export default function App() {
           </button>
 
           <button 
-            id="settings-trigger"
-            onClick={() => setShowSettings(true)}
-            className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-sm font-semibold ${
+            id="choose-teams-trigger"
+            onClick={() => {
+              setSettingsMode("all");
+              setIsSelectTeamsExpanded(true);
+              setShowSettings(true);
+            }}
+            className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${
               settings.darkMode 
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' 
                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 shadow-sm'
             }`}
           >
-            <Settings className="w-4 h-4" />
-            <span>Choose Teams and Preferences</span>
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Choose Teams</span>
+          </button>
+
+          <button 
+            id="preferences-trigger"
+            onClick={() => {
+              setSettingsMode("preferences");
+              setShowSettings(true);
+            }}
+            className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${
+              settings.darkMode 
+                ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' 
+                : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700 shadow-sm'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Preferences</span>
           </button>
         </div>
       </nav>
@@ -1518,7 +1538,8 @@ export default function App() {
               <div className="flex justify-center">
                 <button 
                   onClick={() => {
-                    setSettingsTab("teams");
+                    setSettingsMode("all");
+                    setIsSelectTeamsExpanded(true);
                     setShowSettings(true);
                   }} 
                   className={`px-5 py-2.5 font-bold text-xs rounded-xl transition flex items-center gap-2 ${
@@ -1687,16 +1708,61 @@ export default function App() {
                           <div className="py-8 text-center bg-slate-950/20 rounded-xl border border-dashed border-slate-800">
                             <Newspaper className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                             <p className="text-xs text-slate-400 italic">No news indexed yet.</p>
-                            <button
-                              onClick={() => fetchNews([team])}
-                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-[11px] font-bold rounded-lg transition-all"
-                            >
-                              Crawl Live News <ArrowRight className="w-3 h-3" />
-                            </button>
+                          </div>
+                        ) : !data.articles || data.articles.length === 0 ? (
+                          <div className={`p-5 rounded-xl border text-center space-y-3.5 ${
+                            settings.darkMode 
+                              ? 'bg-slate-950/20 border-slate-800 text-slate-400' 
+                              : 'bg-slate-50 border-slate-200 text-slate-600 shadow-xs'
+                          }`}>
+                            <Newspaper className="w-8 h-8 text-slate-550 mx-auto opacity-50" />
+                            <p className="text-xs sm:text-sm font-semibold tracking-tight">
+                              No recent Stories found for this team within the last {settings.recencyDays * 24} hours
+                            </p>
+                            
+                            {data.diagnostics && (
+                              <div className="pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedDiagnostics(p => ({ ...p, [team]: !p[team] }))}
+                                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                                    settings.darkMode
+                                      ? "bg-slate-950/60 hover:bg-slate-900/50 border-slate-800 text-slate-400"
+                                      : "bg-white hover:bg-slate-100 border-slate-300 text-slate-700 shadow-xs"
+                                  }`}
+                                >
+                                  {expandedDiagnostics[team] ? "Hide Diagnostics ✕" : "Show Diagnostics ⚙️"}
+                                </button>
+                              </div>
+                            )}
+
+                            {expandedDiagnostics[team] && data.diagnostics && (
+                              <div className={`p-3 rounded-lg border text-[10px] font-mono space-y-2 overflow-x-auto text-left mt-3 leading-relaxed ${
+                                settings.darkMode ? 'bg-slate-950/80 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                              }`}>
+                                <p className="font-bold border-b border-slate-800/25 pb-1 mb-1 text-[11px] uppercase tracking-wider">
+                                  🔍 Connection Error Diagnostic Payload
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+                                  <div><span className="opacity-60 font-sans">Status Code:</span> <span className="font-bold">{data.diagnostics.rssStatus}</span></div>
+                                  <div><span className="opacity-60 font-sans">Status Info:</span> <span className="font-bold">{data.diagnostics.rssStatusText}</span></div>
+                                  <div className="md:col-span-2 truncate"><span className="opacity-60 font-sans">Requested URL:</span> <a href={data.diagnostics.rssUrl} target="_blank" rel="noreferrer" className="underline hover:text-emerald-400">{data.diagnostics.rssUrl}</a></div>
+                                  <div><span className="opacity-60 font-sans">Pacing Delay:</span> {data.diagnostics.pacingDelayMs || "None"}</div>
+                                  <div><span className="opacity-60 font-sans">Backup Gemini Status:</span> {data.diagnostics.geminiStatus}</div>
+                                  <div><span className="opacity-60 font-sans">Diagnostic Timestamp:</span> {data.diagnostics.timestamp}</div>
+                                </div>
+                                {data.diagnostics.rssError && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-800/25">
+                                    <p className="font-bold opacity-60 font-sans">RSS Server Reason/Stack:</p>
+                                    <pre className="whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto text-[9px] bg-black/20 p-1.5 rounded">{data.diagnostics.rssError}</pre>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-4">
-                            {/* Feed status note - Only shown if there is an error */}
+                            {/* Feed status note - Only shown if there is an error but we have articles */}
                             {data.error && (
                               <div className={`p-3 rounded-xl border text-xs space-y-2 ${
                                 settings.darkMode 
@@ -1744,18 +1810,6 @@ export default function App() {
                                         <pre className="whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto text-[9px] bg-black/20 p-1.5 rounded">{data.diagnostics.rssError}</pre>
                                       </div>
                                     )}
-                                    {data.diagnostics.generalRssStatus && (
-                                      <div className="mt-2 pt-1.5 border-t border-rose-900/10 grid grid-cols-1 md:grid-cols-2 gap-y-1">
-                                        <div><span className="opacity-60 font-sans">General Fallback RSS Status:</span> {data.diagnostics.generalRssStatus}</div>
-                                        <div><span className="opacity-60 font-sans">General Fallback Status Text:</span> {data.diagnostics.generalRssStatusText}</div>
-                                        {data.diagnostics.generalRssError && <div className="md:col-span-2 text-[9px] opacity-80">Reason: {data.diagnostics.generalRssError}</div>}
-                                      </div>
-                                    )}
-                                    <p className="text-[9px] opacity-75 italic border-t border-rose-900/10 pt-1 mt-1 font-sans leading-relaxed">
-                                      💡 <strong>Deployment Tip:</strong> {data.diagnostics.rssStatus === "Client Proxy Failure" 
-                                        ? "Since this app is hosted on a static page platform (e.g. GitHub Pages), it utilizes public CORS proxies (corsproxy.io, allorigins, codetabs) to query feeds directly from the browser. If all public proxies are rate-limited, wait a few minutes or run the full-stack version to use the backend proxy."
-                                        : "If you see HTTP 429 or fetch errors, the Google News RSS API has rate-limited the server IP. The pacing delay will automatically spread requests on the next load."}
-                                    </p>
                                   </div>
                                 )}
                               </div>
@@ -1765,85 +1819,79 @@ export default function App() {
                             <div className="flex flex-col gap-2.5">
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[34rem] overflow-y-auto pr-1">
-                                {data.articles && data.articles.length > 0 ? (
-                                  data.articles.map((art, idx) => {
-                                    const diffMs = Date.now() - art.timestamp;
-                                    const diffHrs = Math.round(diffMs / (1000 * 60 * 60));
-                                    let relativeTime = "";
-                                    if (diffHrs < 1) {
-                                      relativeTime = "Just now";
-                                    } else if (diffHrs < 24) {
-                                      relativeTime = `${diffHrs}h ago`;
-                                    } else {
-                                      const diffDays = Math.round(diffHrs / 24);
-                                      relativeTime = `${diffDays}d ago`;
-                                    }
+                                {data.articles.map((art, idx) => {
+                                  const diffMs = Date.now() - art.timestamp;
+                                  const diffHrs = Math.round(diffMs / (1000 * 60 * 60));
+                                  let relativeTime = "";
+                                  if (diffHrs < 1) {
+                                    relativeTime = "Just now";
+                                  } else if (diffHrs < 24) {
+                                    relativeTime = `${diffHrs}h ago`;
+                                  } else {
+                                    const diffDays = Math.round(diffHrs / 24);
+                                    relativeTime = `${diffDays}d ago`;
+                                  }
 
-                                    const isViewed = viewedLinks.includes(art.url);
+                                  const isViewed = viewedLinks.includes(art.url);
 
-                                    return (
-                                      <a
-                                        key={idx}
-                                        href={art.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={() => markLinkAsViewed(art.url)}
-                                        className={`py-1.5 px-3 rounded-lg border text-left flex items-start gap-2.5 group transition-all duration-150 ${
+                                  return (
+                                    <a
+                                      key={idx}
+                                      href={art.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => markLinkAsViewed(art.url)}
+                                      className={`py-1.5 px-3 rounded-lg border text-left flex items-start gap-2.5 group transition-all duration-150 ${
+                                        isViewed
+                                          ? (settings.darkMode
+                                              ? 'bg-slate-950/20 border-slate-900/60 hover:bg-slate-900/40'
+                                              : 'bg-slate-100/50 border-slate-200/50 hover:bg-slate-100/80')
+                                          : (settings.darkMode
+                                              ? 'bg-slate-950/45 border-slate-800/70 hover:bg-slate-900/90 hover:border-emerald-500/40'
+                                              : 'bg-slate-50 border-slate-200 hover:bg-white hover:border-emerald-500/35 hover:shadow-sm')
+                                      }`}
+                                    >
+                                      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 transition-transform ${
+                                        isViewed
+                                          ? (settings.darkMode ? 'bg-slate-700' : 'bg-slate-300')
+                                          : 'bg-emerald-400 group-hover:scale-125'
+                                      }`}></div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`text-xs font-bold leading-normal tracking-tight transition-colors line-clamp-2 ${
                                           isViewed
-                                            ? (settings.darkMode
-                                                ? 'bg-slate-950/20 border-slate-900/60 hover:bg-slate-900/40'
-                                                : 'bg-slate-100/50 border-slate-200/50 hover:bg-slate-100/80')
-                                            : (settings.darkMode
-                                                ? 'bg-slate-950/45 border-slate-800/70 hover:bg-slate-900/90 hover:border-emerald-500/40'
-                                                : 'bg-slate-50 border-slate-200 hover:bg-white hover:border-emerald-500/35 hover:shadow-sm')
-                                        }`}
-                                      >
-                                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 transition-transform ${
-                                          isViewed
-                                            ? (settings.darkMode ? 'bg-slate-700' : 'bg-slate-300')
-                                            : 'bg-emerald-400 group-hover:scale-125'
-                                        }`}></div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className={`text-xs font-bold leading-normal tracking-tight transition-colors line-clamp-2 ${
+                                            ? (settings.darkMode 
+                                                ? 'text-slate-500 group-hover:text-slate-400' 
+                                                : 'text-slate-400 group-hover:text-slate-600')
+                                            : (settings.darkMode 
+                                                ? 'text-slate-100 group-hover:text-emerald-400' 
+                                                : 'text-slate-800 group-hover:text-emerald-600')
+                                        }`}>
+                                          {art.title}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <span className={`text-[9px] font-black uppercase px-1 py-0.2 rounded font-mono ${
                                             isViewed
-                                              ? (settings.darkMode 
-                                                  ? 'text-slate-500 group-hover:text-slate-400' 
-                                                  : 'text-slate-400 group-hover:text-slate-600')
-                                              : (settings.darkMode 
-                                                  ? 'text-slate-100 group-hover:text-emerald-400' 
-                                                  : 'text-slate-800 group-hover:text-emerald-600')
+                                              ? (settings.darkMode ? 'text-slate-500 bg-slate-800/60' : 'text-slate-500 bg-slate-500/10')
+                                              : 'text-emerald-500 bg-emerald-500/10'
                                           }`}>
-                                            {art.title}
-                                          </p>
-                                          <div className="flex items-center gap-2 mt-1">
-                                            <span className={`text-[9px] font-black uppercase px-1 py-0.2 rounded font-mono ${
-                                              isViewed
-                                                ? (settings.darkMode ? 'text-slate-500 bg-slate-800/60' : 'text-slate-500 bg-slate-500/10')
-                                                : 'text-emerald-500 bg-emerald-500/10'
-                                            }`}>
-                                              {art.source}
+                                            {art.source}
+                                          </span>
+                                          <span className="text-[9px] text-slate-500 font-mono">{relativeTime}</span>
+                                          {isViewed && (
+                                            <span className="text-[8px] uppercase tracking-wider font-extrabold text-slate-500 bg-slate-500/10 px-1 py-0.2 rounded font-mono">
+                                              Viewed
                                             </span>
-                                            <span className="text-[9px] text-slate-500 font-mono">{relativeTime}</span>
-                                            {isViewed && (
-                                              <span className="text-[8px] uppercase tracking-wider font-extrabold text-slate-500 bg-slate-500/10 px-1 py-0.2 rounded font-mono">
-                                                Viewed
-                                              </span>
-                                            )}
-                                          </div>
+                                          )}
                                         </div>
-                                        <ExternalLink className={`w-3 h-3 shrink-0 self-center transition-colors ${
-                                          isViewed
-                                            ? 'text-slate-600 group-hover:text-slate-500'
-                                            : 'text-slate-500 group-hover:text-emerald-400'
-                                        }`} />
-                                      </a>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="col-span-1 md:col-span-2 text-xs text-slate-500 italic p-4 bg-slate-950/20 rounded-xl text-center border border-dashed border-slate-800/50">
-                                    No recent stories matched selected web sources for this team. Add more sources or extend your recency lookup!
-                                  </div>
-                                )}
+                                      </div>
+                                      <ExternalLink className={`w-3 h-3 shrink-0 self-center transition-colors ${
+                                        isViewed
+                                          ? 'text-slate-600 group-hover:text-slate-500'
+                                          : 'text-slate-500 group-hover:text-emerald-400'
+                                      }`} />
+                                    </a>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
@@ -1891,7 +1939,9 @@ export default function App() {
             <div className={`flex items-center justify-between border-b pb-3 ${settings.darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-emerald-400 animate-spin-slow" />
-                <h3 className="text-sm sm:text-base font-bold uppercase tracking-wide">Configure App Settings</h3>
+                <h3 className="text-sm sm:text-base font-bold uppercase tracking-wide">
+                  {settingsMode === "preferences" ? "Configure Preferences" : "Configure App Settings"}
+                </h3>
               </div>
               <button 
                 type="button"
@@ -1909,9 +1959,10 @@ export default function App() {
             <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
               
               {/* SECTION 1: COLLAPSIBLE SELECT TEAMS TO FOLLOW */}
-              <div className={`rounded-xl border p-1.5 ${
-                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
-              }`}>
+              {settingsMode !== "preferences" && (
+                <div className={`rounded-xl border p-1.5 ${
+                  settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+                }`}>
                 <button
                   type="button"
                   onClick={() => setIsSelectTeamsExpanded(!isSelectTeamsExpanded)}
@@ -2058,11 +2109,13 @@ export default function App() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* SECTION 2: CURRENTLY TRACKED TEAMS & ORDER */}
-              <div className={`p-4 rounded-xl border space-y-3 ${
-                settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
-              }`}>
+              {settingsMode !== "preferences" && (
+                <div className={`p-4 rounded-xl border space-y-3 ${
+                  settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+                }`}>
                 <div className="flex items-center justify-between">
                   <span className={`text-[11px] font-black uppercase tracking-wider block ${
                     settings.darkMode ? 'text-slate-400' : 'text-slate-500'
@@ -2130,6 +2183,7 @@ export default function App() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* SECTION 3: NEWS CRAWL LOOKBACK WINDOW */}
               <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
