@@ -274,6 +274,37 @@ function getDisplayScoreText(scoreData: any): string {
   }
 }
 
+function getDisplayNextGameText(nextGame: any): string {
+  if (!nextGame || !nextGame.eventDate) return "";
+  try {
+    const d = new Date(nextGame.eventDate);
+    const now = new Date();
+    
+    const isToday = d.toDateString() === now.toDateString();
+    
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = d.toDateString() === tomorrow.toDateString();
+    
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    let formattedDate = "";
+    if (isToday) {
+      formattedDate = `Today ${timeStr}`;
+    } else if (isTomorrow) {
+      formattedDate = `Tomorrow ${timeStr}`;
+    } else {
+      const monthStr = d.toLocaleDateString([], { month: 'short' });
+      const dayStr = d.toLocaleDateString([], { day: 'numeric' });
+      formattedDate = `${monthStr} ${dayStr} ${timeStr}`;
+    }
+
+    return `${formattedDate} ${nextGame.isHome ? "vs" : "@"} ${nextGame.opponentName || "Opponent"}`;
+  } catch {
+    return "";
+  }
+}
+
 const SCOREBOARD_URLS = {
   nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
   ahl: "https://site.api.espn.com/apis/site/v2/sports/hockey/ahl/scoreboard",
@@ -602,6 +633,24 @@ export default function App() {
             scoreText = `Final: ${awayName} ${awayScore}, ${homeName} ${homeScore}`;
           }
 
+          let nextGameData: any = null;
+          if (state === "post") {
+            const upcomingGames = matchedGames.filter(g => g.event.status?.type?.state === "pre");
+            if (upcomingGames.length > 0) {
+              upcomingGames.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
+              const nextGame = upcomingGames[0];
+              const nextComp = nextGame.competition;
+              const nextMatchedComp = nextGame.matchedCompetitor;
+              const nextOpponent = nextComp.competitors.find((c: any) => c.id !== nextMatchedComp.team.id) || nextComp.competitors[0];
+              
+              nextGameData = {
+                eventDate: nextGame.event.date,
+                opponentName: nextOpponent?.team?.abbreviation || nextOpponent?.team?.displayName || nextOpponent?.team?.name || "Opp",
+                isHome: nextMatchedComp.homeAway === "home"
+              };
+            }
+          }
+
           clientScores[teamName] = {
             state,
             detail,
@@ -609,7 +658,8 @@ export default function App() {
             sport: bestGame.sportKey,
             eventDate: event.date,
             opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
-            isHome: matchedCompetitor.homeAway === "home"
+            isHome: matchedCompetitor.homeAway === "home",
+            nextGame: nextGameData
           };
         }
       }
@@ -1580,7 +1630,8 @@ export default function App() {
                             </div>
                             <h3 className={`text-base font-bold font-display ${settings.darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{team}</h3>
                             {teamScores[team] && (
-                              <div className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 border transition-all ${
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <div className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 border transition-all ${
                                 teamScores[team].state === 'in'
                                   ? settings.darkMode
                                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 animate-pulse font-extrabold'
@@ -1601,7 +1652,18 @@ export default function App() {
                                 )}
                                 <span>{getDisplayScoreText(teamScores[team])}</span>
                               </div>
-                            )}
+
+                              {teamScores[team].state === 'post' && teamScores[team].nextGame && (
+                                <div className={`px-2.5 py-1 rounded-xl text-[11px] font-medium border transition-all ${
+                                  settings.darkMode
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:border-emerald-500/30 hover:bg-emerald-500/15'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-150 hover:bg-emerald-100/50 shadow-xs'
+                                }`}>
+                                  <span>Next: {getDisplayNextGameText(teamScores[team].nextGame)}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           </div>
                           
                           <div className="flex items-center gap-3">

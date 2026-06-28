@@ -933,6 +933,24 @@ app.post("/api/scores", async (req, res) => {
           scoreText = `${formattedDate} ${isHome ? "vs" : "@"} ${oppName}`;
         }
 
+        let nextGameData: any = null;
+        if (state === "post") {
+          const upcomingGames = matchedGames.filter(g => g.event.status?.type?.state === "pre");
+          if (upcomingGames.length > 0) {
+            upcomingGames.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
+            const nextGame = upcomingGames[0];
+            const nextComp = nextGame.competition;
+            const nextMatchedComp = nextGame.matchedCompetitor;
+            const nextOpponent = nextComp.competitors.find((c: any) => c.id !== nextMatchedComp.team.id) || nextComp.competitors[0];
+            
+            nextGameData = {
+              eventDate: nextGame.event.date,
+              opponentName: nextOpponent?.team?.abbreviation || nextOpponent?.team?.displayName || nextOpponent?.team?.name || "Opp",
+              isHome: nextMatchedComp.homeAway === "home"
+            };
+          }
+        }
+
         scores[teamName] = {
           state,
           detail,
@@ -940,7 +958,8 @@ app.post("/api/scores", async (req, res) => {
           sport: bestGame.sportKey,
           eventDate: event.date,
           opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
-          isHome: matchedCompetitor.homeAway === "home"
+          isHome: matchedCompetitor.homeAway === "home",
+          nextGame: nextGameData
         };
       }
     }
