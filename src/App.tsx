@@ -289,6 +289,57 @@ const SCOREBOARD_URLS = {
   ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
 };
 
+async function fetchJsonWithFallbackProxies(url: string): Promise<any> {
+  // 1. Try direct fetch first
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn(`Direct JSON fetch failed for ${url}, trying proxies...`, err);
+  }
+
+  // 2. Try Google Gadget Proxy
+  try {
+    const proxyUrl = `https://images-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=120&url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const text = await res.text();
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        return JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+      }
+      return JSON.parse(text);
+    }
+  } catch (err) {
+    console.warn(`Google Gadget Proxy failed for JSON ${url}:`, err);
+  }
+
+  // 3. Try corsproxy.io
+  try {
+    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn(`corsproxy.io failed for JSON ${url}:`, err);
+  }
+
+  // 4. Try allorigins.win (raw)
+  try {
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn(`allorigins.win raw failed for JSON ${url}:`, err);
+  }
+
+  return null;
+}
+
 function matchesTeamClient(userTeamName: string, competitorDisplayName: string, competitorName: string): boolean {
   const userLower = userTeamName.toLowerCase().trim();
   const compDisplayLower = competitorDisplayName.toLowerCase().trim();
@@ -452,7 +503,15 @@ export default function App() {
   const [showSourcesSelector, setShowSourcesSelector] = useState(false);
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
 
-  const [teamScores, setTeamScores] = useState<Record<string, any>>({});
+  const [teamScores, setTeamScores] = useState<Record<string, any>>(() => {
+    const saved = localStorage.getItem("my_teams_scores");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {};
+  });
   const [scoresLoading, setScoresLoading] = useState(false);
 
   const fetchScoresDirectlyOnClient = async (targetTeams: string[]) => {
@@ -461,13 +520,13 @@ export default function App() {
       const boards = await Promise.all(
         keys.map(async (key) => {
           try {
-            const res = await fetch(SCOREBOARD_URLS[key]);
-            if (res.ok) {
-              const data = await res.json();
+            const urlWithCacheBust = `${SCOREBOARD_URLS[key]}?_t=${Date.now()}`;
+            const data = await fetchJsonWithFallbackProxies(urlWithCacheBust);
+            if (data) {
               return { key, data };
             }
           } catch (err) {
-            console.warn(`Direct client fetch failed for ${key}:`, err);
+            console.warn(`Direct/proxy client fetch failed for ${key}:`, err);
           }
           return { key, data: null };
         })
@@ -606,6 +665,13 @@ export default function App() {
     }, 60 * 1000);
     return () => clearInterval(interval);
   }, [settings.teams.join(",")]); // Join array to dependency string for stable trigger
+
+  // Persist live scores to localStorage
+  useEffect(() => {
+    if (Object.keys(teamScores).length > 0) {
+      localStorage.setItem("my_teams_scores", JSON.stringify(teamScores));
+    }
+  }, [teamScores]);
 
   // Backup original settings when opening dialog
   useEffect(() => {
@@ -1074,16 +1140,17 @@ export default function App() {
 
       const data = await response.json();
       if (data.results) {
-        const updatedCache = { ...newsCache };
-        data.results.forEach((item: TeamNews) => {
-          updatedCache[item.team] = item;
+        setNewsCache(prev => {
+          const updated = { ...prev };
+          data.results.forEach((item: TeamNews) => {
+            updated[item.team] = item;
+          });
+          return updated;
         });
-        setNewsCache(updatedCache);
       }
     } catch (err: any) {
       console.warn("Backend fetch failed, attempting client-side CORS proxy crawler...", err);
       try {
-        const updatedCache = { ...newsCache };
         const results = await Promise.all(
           targetTeams.map(async (team) => {
             try {
@@ -1101,7 +1168,7 @@ export default function App() {
               }
 
               const searchQuery = sitesFilter ? `"${team}"${sitesFilter}` : `"${team}"`;
-              const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en`;
+              const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en&_t=${Date.now()}`;
 
               // Fetch with robust multi-proxy fallback mechanism
               const xmlText = await fetchRssWithFallbackProxies(rssUrl);
@@ -1114,7 +1181,7 @@ export default function App() {
               let filteredArticles = articles.filter((art) => art.timestamp >= cutoffTime);
 
               if (filteredArticles.length === 0 && sitesFilter) {
-                const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`;
+                const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en&_t=${Date.now()}`;
                 try {
                   const genXml = await fetchRssWithFallbackProxies(generalUrl);
                   const genArticles = parseGoogleNewsRSSClient(genXml);
@@ -1151,7 +1218,7 @@ export default function App() {
                   geminiStatus: "Disabled",
                   timestamp: new Date().toISOString(),
                 },
-                error: topArticles.length === 0,
+                error: false, // Normal successful load (even if empty, i.e. off-season) is NOT a connection error
               };
             } catch (innerErr: any) {
               console.error(`Client-side crawl error for ${team}:`, innerErr);
@@ -1178,11 +1245,13 @@ export default function App() {
           })
         );
 
-        const mergedCache = { ...newsCache };
-        results.forEach((item: any) => {
-          mergedCache[item.team] = item;
+        setNewsCache(prev => {
+          const updated = { ...prev };
+          results.forEach((item: any) => {
+            updated[item.team] = item;
+          });
+          return updated;
         });
-        setNewsCache(mergedCache);
       } catch (fallbackErr) {
         setErrorMsg("Failed to update sports news feed. Both backend and client proxy crawler are offline.");
       }
@@ -1677,7 +1746,7 @@ export default function App() {
                                             isViewed
                                               ? (settings.darkMode 
                                                   ? 'text-slate-500 group-hover:text-slate-400' 
-                                                  : 'text-slate-450 group-hover:text-slate-600')
+                                                  : 'text-slate-400 group-hover:text-slate-600')
                                               : (settings.darkMode 
                                                   ? 'text-slate-100 group-hover:text-emerald-400' 
                                                   : 'text-slate-800 group-hover:text-emerald-600')
@@ -1901,7 +1970,7 @@ export default function App() {
                                                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/35 hover:bg-emerald-500/30'
                                                     : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm'
                                                   : settings.darkMode
-                                                    ? 'bg-slate-900 border-slate-800 text-slate-450 hover:bg-slate-850'
+                                                    ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
                                                     : 'bg-white border-slate-250 text-slate-600 hover:bg-slate-100 shadow-sm'
                                               }`}
                                             >
@@ -2214,7 +2283,7 @@ export default function App() {
                                       ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
                                       : isPreferred
                                         ? (settings.darkMode 
-                                          ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                          ? "bg-slate-900/60 border-slate-750 text-slate-400 opacity-60 hover:opacity-100" 
                                           : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
                                         : (settings.darkMode
                                           ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
@@ -2255,7 +2324,7 @@ export default function App() {
                                       ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
                                       : isPreferred
                                         ? (settings.darkMode 
-                                          ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                          ? "bg-slate-900/60 border-slate-750 text-slate-400 opacity-60 hover:opacity-100" 
                                           : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
                                         : (settings.darkMode
                                           ? "bg-slate-950/40 border-slate-850 text-slate-600 hover:border-slate-750"
@@ -2301,7 +2370,7 @@ export default function App() {
                                       ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 shadow-xs"
                                       : isPreferred
                                         ? (settings.darkMode 
-                                          ? "bg-slate-900/60 border-slate-750 text-slate-450 opacity-60 hover:opacity-100" 
+                                          ? "bg-slate-900/60 border-slate-750 text-slate-400 opacity-60 hover:opacity-100" 
                                           : "bg-slate-100 border-slate-300 text-slate-500 opacity-70 hover:opacity-100 shadow-xs")
                                         : (settings.darkMode
                                           ? "bg-slate-950/40 border-slate-850 text-slate-650 hover:border-slate-750"

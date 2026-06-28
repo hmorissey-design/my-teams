@@ -571,7 +571,7 @@ app.post("/api/news", async (req, res) => {
         // Build query specifically targeting the team constraints.
         // We simplify this to just the team name to circumvent restrictive/blocked nested searches on Google RSS.
         const searchQuery = sitesFilter ? `"${team}"${sitesFilter}` : `"${team}"`;
-        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en`;
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en&_t=${Date.now()}`;
 
         let rssStatus = "200";
         let rssStatusText = "OK";
@@ -613,7 +613,7 @@ app.post("/api/news", async (req, res) => {
 
         // Fallback if domain-restricted search yielded zero results: query universally with simple query term so screen isn't empty
         if (filteredArticles.length === 0 && sitesFilter) {
-          const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en`;
+          const generalUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${team}"`)}&hl=en-US&gl=US&ceid=US:en&_t=${Date.now()}`;
           generalRssStatus = "Attempting...";
           try {
             const genResponse = await fetch(generalUrl, {
