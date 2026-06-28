@@ -1026,6 +1026,16 @@ export default function App() {
     for (let i = 0; i < proxies.length; i++) {
       try {
         const text = await proxies[i].fn();
+        
+        // Validate if the response is a valid RSS/XML feed rather than an HTML block/captcha page
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes("<html") || lowerText.includes("<!doctype html") || lowerText.includes("<title>error</title>") || lowerText.includes("cloudflare")) {
+          throw new Error("Returned HTML instead of XML (possibly proxy captcha or rate limit)");
+        }
+        if (!lowerText.includes("<rss") && !lowerText.includes("<channel") && !lowerText.includes("<feed") && !lowerText.includes("<item")) {
+          throw new Error("Response is not a valid XML/RSS feed");
+        }
+
         return text;
       } catch (err: any) {
         const errMsg = err.message || String(err);
@@ -1440,9 +1450,9 @@ export default function App() {
       </div>
 
       {/* ================= HEADER & NAVIGATION ================= */}
-      <nav id="app-navbar" className={`h-16 px-6 border-b flex items-center justify-between shrink-0 transition-colors ${settings.darkMode ? 'bg-slate-950/80 backdrop-blur-md border-slate-800' : 'bg-white/80 backdrop-blur-md border-slate-200'}`}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/30 flex items-center justify-center bg-slate-900 shrink-0">
+      <nav id="app-navbar" className={`h-16 px-3 sm:px-6 border-b flex items-center justify-between shrink-0 transition-colors ${settings.darkMode ? 'bg-slate-950/80 backdrop-blur-md border-slate-800' : 'bg-white/80 backdrop-blur-md border-slate-200'}`}>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/30 flex items-center justify-center bg-slate-900 shrink-0">
             <img 
               src={appLogo} 
               alt="My Teams Logo" 
@@ -1451,29 +1461,16 @@ export default function App() {
             />
           </div>
           <div>
-            <h1 className="text-lg font-black tracking-tight uppercase flex items-center gap-2">
+            <h1 className="text-sm sm:text-lg font-black tracking-tight uppercase flex items-center gap-2">
               MY TEAMS
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className={`hidden md:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl border ${settings.darkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
             <span>{settings.recencyDays === 1 ? "24 Hours News" : "Past Two Days News"}</span>
           </div>
-
-          <button 
-            onClick={() => fetchNews()}
-            disabled={isLoading || settings.teams.length === 0}
-            className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-sm font-semibold ${
-              settings.darkMode 
-                ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' 
-                : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700 shadow-sm'
-            } disabled:opacity-50`}
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
-            <span className="hidden sm:inline">Refresh All</span>
-          </button>
 
           <button 
             id="choose-teams-trigger"
@@ -1482,7 +1479,7 @@ export default function App() {
               setIsSelectTeamsExpanded(true);
               setShowSettings(true);
             }}
-            className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${
+            className={`p-2 sm:p-2.5 rounded-xl border transition-all flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-sm font-semibold ${
               settings.darkMode 
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' 
                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 shadow-sm'
@@ -1498,7 +1495,7 @@ export default function App() {
               setSettingsMode("preferences");
               setShowSettings(true);
             }}
-            className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${
+            className={`p-2 sm:p-2.5 rounded-xl border transition-all flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-sm font-semibold ${
               settings.darkMode 
                 ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' 
                 : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700 shadow-sm'
