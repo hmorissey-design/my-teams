@@ -7,7 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Lazy initialize Gemini client to avoid crashes if API key is not present initially
 let aiClient: GoogleGenAI | null = null;
