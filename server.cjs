@@ -331,6 +331,8 @@ function filterSitesForTeam(teamName, customSites) {
     return !isSpecificToOtherSport;
   });
 }
+var globalNewsCache = {};
+var NEWS_CACHE_TTL_MS = 10 * 60 * 1e3;
 app.post("/api/news", async (req, res) => {
   try {
     const { teams, recencyDays, feedMode, customSites } = req.body;
@@ -342,7 +344,19 @@ app.post("/api/news", async (req, res) => {
     const results = [];
     for (let i = 0; i < teams.length; i++) {
       const team = teams[i];
-      if (i > 0) {
+      const sortedSites = Array.isArray(customSites) ? [...customSites].map((s) => s.toLowerCase().trim()).sort().join(",") : "";
+      const cacheKey = `${team.toLowerCase().trim()}_${days}_${sortedSites}_${feedMode}`;
+      const cached = globalNewsCache[cacheKey];
+      const now = Date.now();
+      if (cached && now - cached.timestamp < NEWS_CACHE_TTL_MS) {
+        results.push({
+          ...cached.result,
+          fromCache: true,
+          cacheAgeMs: now - cached.timestamp
+        });
+        continue;
+      }
+      if (results.filter((r) => !r.fromCache).length > 0) {
         await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 400));
       }
       try {
@@ -506,7 +520,7 @@ app.post("/api/news", async (req, res) => {
           summaryText = topArticles.length > 0 ? `\u2022 Direct Sports Feed Active. Loaded ${topArticles.length} recent headline${topArticles.length > 1 ? "s" : ""} directly from your tracking feed.
 \u2022 Chronological live timeline of match reports and squad news below.` : `\u2022 No recent developments found on your selected sports websites in the last ${days} days. Try expanding your Recency window or updating customized domains.`;
         }
-        results.push({
+        const resultItem = {
           team,
           summary: summaryText,
           links: links.length > 0 ? links : [
@@ -529,7 +543,14 @@ app.post("/api/news", async (req, res) => {
           },
           // If we failed to get articles and primary fetch wasn't completely successful
           error: topArticles.length === 0 && (rssStatus !== "200" || generalRssStatus && generalRssStatus !== "200")
-        });
+        };
+        results.push(resultItem);
+        if (!resultItem.error) {
+          globalNewsCache[cacheKey] = {
+            result: resultItem,
+            timestamp: Date.now()
+          };
+        }
       } catch (e) {
         console.warn(`Error aggregating feed for ${team}:`, e.message || e);
         results.push({
