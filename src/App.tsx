@@ -440,7 +440,7 @@ export default function App() {
 
         // Ensure standard structure
         return {
-          recencyDays: typeof parsed.recencyDays === "number" ? Math.min(Math.max(parsed.recencyDays, 1), 2) : 2,
+          recencyDays: typeof parsed.recencyDays === "number" ? Math.min(Math.max(parsed.recencyDays, 1), 1) : 1,
           darkMode: typeof parsed.darkMode === "boolean" ? parsed.darkMode : true,
           teams: Array.isArray(parsed.teams) ? parsed.teams : [],
           feedMode: typeof parsed.feedMode === "string" ? parsed.feedMode : "direct",
@@ -452,7 +452,7 @@ export default function App() {
       }
     }
     return {
-      recencyDays: 2,
+      recencyDays: 1,
       darkMode: true,
       teams: [],
       feedMode: "direct",
@@ -1455,14 +1455,17 @@ export default function App() {
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/30 flex items-center justify-center bg-slate-900 shrink-0">
             <img 
               src={appLogo} 
-              alt="My Teams Logo" 
+              alt="My Team News Logo" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
           </div>
           <div>
             <h1 className="text-sm sm:text-lg font-black tracking-tight uppercase flex items-center gap-2">
-              MY TEAMS
+              MY TEAM NEWS
+              {isLoading && (
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+              )}
             </h1>
           </div>
         </div>
@@ -1528,7 +1531,7 @@ export default function App() {
           {settings.teams.length === 0 ? (
             <div className={`p-8 rounded-2xl border text-center ${settings.darkMode ? 'bg-slate-900/30 border-slate-850' : 'bg-white border-slate-250 shadow-sm'}`}>
               <Newspaper className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <h3 className="text-lg font-bold mb-2">Welcome to MY TEAMS</h3>
+              <h3 className="text-lg font-bold mb-2">Welcome to MY TEAM NEWS</h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto mb-6">
                 Your bespoke Google Play news tracker. Begin by adding teams in the left sidebar or select from popular sports groups. We will search, gather, and organize the ultimate live-crawled updates for you.
               </p>
@@ -1552,31 +1555,6 @@ export default function App() {
             </div>
           ) : (
             <>
-              {/* Header section status */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase tracking-wider ${
-                    settings.darkMode 
-                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                      : 'bg-emerald-50 border-emerald-100 text-emerald-600'
-                  }`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                    <h2>
-                      {settings.recencyDays === 1 ? "News found in last 24 hours" : "News found in past two days"}
-                    </h2>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3 self-start sm:self-center">
-                  {isLoading && (
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-xl animate-pulse">
-                      <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
-                      <span>Searching for Updates...</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* HORIZONTAL TEAM FILTER PILLS */}
               {settings.teams.length > 1 && (
                 <div className={`flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none border-b border-dashed pb-3 ${
@@ -2182,7 +2160,8 @@ export default function App() {
               </div>
               )}
 
-              {/* SECTION 3: NEWS CRAWL LOOKBACK WINDOW */}
+              {/* SECTION 3: NEWS CRAWL LOOKBACK WINDOW (Hidden - defaulted to 24 hours) */}
+              {/*
               <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                 settings.darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
               }`}>
@@ -2212,6 +2191,7 @@ export default function App() {
                   </label>
                 </div>
               </div>
+              */}
 
               {/* SECTION 4: SOURCES & CUSTOM SOURCES FILTER */}
               <div className={`p-4 rounded-xl border space-y-3.5 ${

@@ -41,8 +41,8 @@ export const GOOGLE_ADMOB_ADS: AdData[] = [
   },
   {
     id: "ad-2",
-    headline: "🔥 Upgrade to MY TEAMS Premium: No Banner Ads, Plus Live Audio Feeds!",
-    sponsor: "My Teams Pro",
+    headline: "🔥 Upgrade to MY TEAM NEWS Premium: No Banner Ads, Plus Live Audio Feeds!",
+    sponsor: "My Team News Pro",
     cta: "Go Ad-Free",
     color: "from-purple-600 to-indigo-600"
   },
