@@ -637,15 +637,27 @@ async function getCachedScoreboard(key, url) {
     return cached.data;
   }
   try {
+    let targetUrl = url;
+    if (key === "milb") {
+      const today = /* @__PURE__ */ new Date();
+      const startDateStr = today.toISOString().split("T")[0];
+      const endDate = /* @__PURE__ */ new Date();
+      endDate.setDate(today.getDate() + 14);
+      const endDateStr = endDate.toISOString().split("T")[0];
+      targetUrl = `${url}&startDate=${startDateStr}&endDate=${endDateStr}`;
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4e3);
-    const res = await fetch(url, {
+    const res = await fetch(targetUrl, {
       headers: { "User-Agent": "Mozilla/5.0" },
       signal: controller.signal
     });
     clearTimeout(timeoutId);
     if (res.ok) {
-      const data = await res.json();
+      let data = await res.json();
+      if (key === "milb") {
+        data = transformMlbStatsToEspn(data);
+      }
       globalScoreboardCache[key] = { data, timestamp: now };
       return data;
     }
@@ -653,6 +665,78 @@ async function getCachedScoreboard(key, url) {
     console.warn(`Failed to fetch scoreboard for ${key}:`, e);
   }
   return cached ? cached.data : null;
+}
+function transformMlbStatsToEspn(mlbData) {
+  const events = [];
+  if (mlbData && Array.isArray(mlbData.dates)) {
+    for (const dateObj of mlbData.dates) {
+      if (!Array.isArray(dateObj.games)) continue;
+      for (const game of dateObj.games) {
+        const awayTeam = game.teams?.away;
+        const homeTeam = game.teams?.home;
+        if (!awayTeam?.team || !homeTeam?.team) continue;
+        const awayName = awayTeam.team.name || "";
+        const homeName = homeTeam.team.name || "";
+        const abstractState = game.status?.abstractGameState || "";
+        const detailedState = game.status?.detailedState || "";
+        let state = "pre";
+        if (abstractState === "Live" || detailedState === "In Progress" || detailedState === "Live") {
+          state = "in";
+        } else if (abstractState === "Final" || detailedState === "Final" || detailedState === "Game Over" || detailedState === "Completed") {
+          state = "post";
+        }
+        events.push({
+          id: `milb_${game.gamePk}`,
+          date: game.gameDate,
+          status: {
+            type: {
+              state,
+              detail: detailedState || abstractState || "Scheduled"
+            }
+          },
+          competitions: [
+            {
+              id: `milb_${game.gamePk}`,
+              date: game.gameDate,
+              competitors: [
+                {
+                  id: `away_${awayTeam.team.id}`,
+                  homeAway: "away",
+                  score: String(awayTeam.score ?? 0),
+                  team: {
+                    id: `away_${awayTeam.team.id}`,
+                    name: awayName,
+                    displayName: awayName,
+                    abbreviation: awayName.slice(0, 3).toUpperCase()
+                  }
+                },
+                {
+                  id: `home_${homeTeam.team.id}`,
+                  homeAway: "home",
+                  score: String(homeTeam.score ?? 0),
+                  team: {
+                    id: `home_${homeTeam.team.id}`,
+                    name: homeName,
+                    displayName: homeName,
+                    abbreviation: homeName.slice(0, 3).toUpperCase()
+                  }
+                }
+              ]
+            }
+          ]
+        });
+      }
+    }
+  }
+  return { events };
+}
+function getSportForScoreboardKey(key) {
+  if (key === "nhl" || key === "ahl") return "hockey";
+  if (key === "mlb" || key === "milb") return "baseball";
+  if (key === "nba") return "basketball";
+  if (key === "nfl") return "football";
+  if (["premier", "mls", "laliga", "seriea", "bundesliga", "ligue1", "ligamx"].includes(key)) return "soccer";
+  return "other";
 }
 var SCOREBOARD_URLS = {
   nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
@@ -666,7 +750,8 @@ var SCOREBOARD_URLS = {
   seriea: "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
   bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
   ligue1: "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
-  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard",
+  milb: "https://statsapi.mlb.com/api/v1/schedule?sportId=11"
 };
 app.post("/api/scores", async (req, res) => {
   try {
@@ -692,6 +777,11 @@ app.post("/api/scores", async (req, res) => {
           for (const competitor of competition.competitors) {
             const teamObj = competitor.team;
             if (!teamObj) continue;
+            const teamSport = getSportForTeam(teamName);
+            const boardSport = getSportForScoreboardKey(board.key);
+            if (teamSport !== "general" && boardSport !== "other" && teamSport !== boardSport) {
+              continue;
+            }
             if (matchesTeam(teamName, teamObj.displayName || "", teamObj.name || "")) {
               matchedGames.push({
                 event,
