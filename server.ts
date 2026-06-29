@@ -838,6 +838,7 @@ const globalScoreboardCache: Record<string, ScoreboardCache> = {};
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 
 // Safe cached fetch
+// Safe cached fetch with dynamic dates for MiLB
 async function getCachedScoreboard(key: string, url: string): Promise<any> {
   const cached = globalScoreboardCache[key];
   const now = Date.now();
@@ -845,15 +846,31 @@ async function getCachedScoreboard(key: string, url: string): Promise<any> {
     return cached.data;
   }
   try {
+    let targetUrl = url;
+    if (key === "milb") {
+      const today = new Date();
+      const startDateStr = today.toISOString().split("T")[0];
+      const endDate = new Date();
+      endDate.setDate(today.getDate() + 14); // 2 weeks in the future
+      const endDateStr = endDate.toISOString().split("T")[0];
+      targetUrl = `${url}&startDate=${startDateStr}&endDate=${endDateStr}`;
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(url, {
+    const res = await fetch(targetUrl, {
       headers: { "User-Agent": "Mozilla/5.0" },
       signal: controller.signal
     });
     clearTimeout(timeoutId);
     if (res.ok) {
-      const data = await res.json();
+      let data = await res.json();
+      
+      // If key is milb, convert MLB Stats API format to ESPN compatible format
+      if (key === "milb") {
+        data = transformMlbStatsToEspn(data);
+      }
+      
       globalScoreboardCache[key] = { data, timestamp: now };
       return data;
     }
@@ -861,6 +878,89 @@ async function getCachedScoreboard(key: string, url: string): Promise<any> {
     console.warn(`Failed to fetch scoreboard for ${key}:`, e);
   }
   return cached ? cached.data : null;
+}
+
+// Transforms MLB Stats API schedule response to an ESPN-compatible scoreboard object
+function transformMlbStatsToEspn(mlbData: any): any {
+  const events: any[] = [];
+  
+  if (mlbData && Array.isArray(mlbData.dates)) {
+    for (const dateObj of mlbData.dates) {
+      if (!Array.isArray(dateObj.games)) continue;
+      
+      for (const game of dateObj.games) {
+        const awayTeam = game.teams?.away;
+        const homeTeam = game.teams?.home;
+        if (!awayTeam?.team || !homeTeam?.team) continue;
+        
+        const awayName = awayTeam.team.name || "";
+        const homeName = homeTeam.team.name || "";
+        
+        const abstractState = game.status?.abstractGameState || "";
+        const detailedState = game.status?.detailedState || "";
+        
+        // Map abstractGameState to ESPN-style state
+        let state = "pre";
+        if (abstractState === "Live" || detailedState === "In Progress" || detailedState === "Live") {
+          state = "in";
+        } else if (abstractState === "Final" || detailedState === "Final" || detailedState === "Game Over" || detailedState === "Completed") {
+          state = "post";
+        }
+        
+        events.push({
+          id: `milb_${game.gamePk}`,
+          date: game.gameDate,
+          status: {
+            type: {
+              state,
+              detail: detailedState || abstractState || "Scheduled"
+            }
+          },
+          competitions: [
+            {
+              id: `milb_${game.gamePk}`,
+              date: game.gameDate,
+              competitors: [
+                {
+                  id: `away_${awayTeam.team.id}`,
+                  homeAway: "away",
+                  score: String(awayTeam.score ?? 0),
+                  team: {
+                    id: `away_${awayTeam.team.id}`,
+                    name: awayName,
+                    displayName: awayName,
+                    abbreviation: awayName.slice(0, 3).toUpperCase()
+                  }
+                },
+                {
+                  id: `home_${homeTeam.team.id}`,
+                  homeAway: "home",
+                  score: String(homeTeam.score ?? 0),
+                  team: {
+                    id: `home_${homeTeam.team.id}`,
+                    name: homeName,
+                    displayName: homeName,
+                    abbreviation: homeName.slice(0, 3).toUpperCase()
+                  }
+                }
+              ]
+            }
+          ]
+        });
+      }
+    }
+  }
+  
+  return { events };
+}
+
+function getSportForScoreboardKey(key: string): string {
+  if (key === "nhl" || key === "ahl") return "hockey";
+  if (key === "mlb" || key === "milb") return "baseball";
+  if (key === "nba") return "basketball";
+  if (key === "nfl") return "football";
+  if (["premier", "mls", "laliga", "seriea", "bundesliga", "ligue1", "ligamx"].includes(key)) return "soccer";
+  return "other";
 }
 
 const SCOREBOARD_URLS = {
@@ -875,7 +975,8 @@ const SCOREBOARD_URLS = {
   seriea: "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
   bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
   ligue1: "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
-  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard",
+  milb: "https://statsapi.mlb.com/api/v1/schedule?sportId=11"
 };
 
 // API Endpoint to fetch scores and game statuses for custom teams list
@@ -910,6 +1011,14 @@ app.post("/api/scores", async (req, res) => {
           for (const competitor of competition.competitors) {
             const teamObj = competitor.team;
             if (!teamObj) continue;
+
+            const teamSport = getSportForTeam(teamName);
+            const boardSport = getSportForScoreboardKey(board.key);
+            
+            // Only match if the sports align to prevent cross-sport false positives (e.g., Buffalo Bisons matching Buffalo Bills)
+            if (teamSport !== "general" && boardSport !== "other" && teamSport !== boardSport) {
+              continue;
+            }
 
             if (matchesTeam(teamName, teamObj.displayName || "", teamObj.name || "")) {
               matchedGames.push({
