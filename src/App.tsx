@@ -525,6 +525,18 @@ export default function App() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [lastScoresFetchTime, setLastScoresFetchTime] = useState<number>(() => {
+    const saved = localStorage.getItem("my_teams_last_scores_fetch");
+    return saved ? Number(saved) : 0;
+  });
+
+  const [lastNewsFetchTime, setLastNewsFetchTime] = useState<number>(() => {
+    const saved = localStorage.getItem("my_teams_last_news_fetch");
+    return saved ? Number(saved) : 0;
+  });
+
+  const [appOpenedTime, setAppOpenedTime] = useState<Date>(new Date());
   const [customTeamInput, setCustomTeamInput] = useState("");
   const [customSiteInput, setCustomSiteInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -691,30 +703,76 @@ export default function App() {
         // Fallback to client-side direct fetch if API returns an error or is a 404 (static deployment)
         await fetchScoresDirectlyOnClient(targetTeams);
       }
+      const now = Date.now();
+      setLastScoresFetchTime(now);
+      localStorage.setItem("my_teams_last_scores_fetch", String(now));
     } catch (e) {
       console.warn("Failed to fetch live scores from server backend, falling back to direct client-side fetch:", e);
       await fetchScoresDirectlyOnClient(targetTeams);
+      const now = Date.now();
+      setLastScoresFetchTime(now);
+      localStorage.setItem("my_teams_last_scores_fetch", String(now));
     } finally {
       setScoresLoading(false);
     }
   };
 
-  // Fetch scores on initial load
-  useEffect(() => {
-    if (settings.teams.length > 0) {
-      fetchScores();
-    }
-  }, []);
-
-  // Refresh scores every 60 seconds
+  // Background score interval updates (every 15 minutes)
   useEffect(() => {
     if (settings.teams.length === 0) return;
-    fetchScores(); // Fetch immediately when teams list changes
+
     const interval = setInterval(() => {
       fetchScores();
-    }, 60 * 1000);
+    }, 15 * 60 * 1000); // 15 minutes
+
     return () => clearInterval(interval);
-  }, [settings.teams.join(",")]); // Join array to dependency string for stable trigger
+  }, [settings.teams.join(",")]);
+
+  // Background news interval updates (every 30 minutes)
+  useEffect(() => {
+    if (settings.teams.length === 0) return;
+
+    const interval = setInterval(() => {
+      fetchNews();
+    }, 30 * 60 * 1000); // 30 minutes
+
+    return () => clearInterval(interval);
+  }, [settings.teams.join(",")]);
+
+  // Listen to focus and visibility change events for when user resumes / opens the app
+  useEffect(() => {
+    const handleResume = () => {
+      const now = Date.now();
+      
+      // Update visual session timestamp
+      setAppOpenedTime(new Date());
+
+      const FIFTEEN_MINS = 15 * 60 * 1000;
+      const THIRTY_MINS = 30 * 60 * 1000;
+
+      // Lazy check scores fetch
+      if (settings.teams.length > 0 && now - lastScoresFetchTime >= FIFTEEN_MINS) {
+        fetchScores();
+      }
+
+      // Lazy check news fetch
+      if (settings.teams.length > 0 && now - lastNewsFetchTime >= THIRTY_MINS) {
+        fetchNews();
+      }
+    };
+
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        handleResume();
+      }
+    });
+    window.addEventListener("focus", handleResume);
+
+    return () => {
+      window.removeEventListener("visibilitychange", handleResume);
+      window.removeEventListener("focus", handleResume);
+    };
+  }, [settings.teams.join(","), lastScoresFetchTime, lastNewsFetchTime]);
 
   // Persist live scores to localStorage
   useEffect(() => {
@@ -1317,6 +1375,9 @@ export default function App() {
       }
     } finally {
       setIsLoading(false);
+      const now = Date.now();
+      setLastNewsFetchTime(now);
+      localStorage.setItem("my_teams_last_news_fetch", String(now));
     }
   };
 
@@ -1332,34 +1393,27 @@ export default function App() {
     }
   };
 
-  // Initial Fetch if cache is empty or if any tracked teams have news older than 20 minutes (or if they had error/no-results states)
+  // Unified initial mount check for scores and news
   useEffect(() => {
     if (settings.teams.length === 0) return;
 
     const now = Date.now();
-    const CACHE_EXPIRY_MS = 20 * 60 * 1000; // 20 minutes
+    const FIFTEEN_MINS = 15 * 60 * 1000;
+    const THIRTY_MINS = 30 * 60 * 1000;
 
-    const missing = settings.teams.filter(t => !newsCache[t]);
-    const expired = settings.teams.filter(t => {
-      const cacheEntry = newsCache[t];
-      if (!cacheEntry) return false;
+    // Check if score fetch is expired or empty
+    const timeSinceScores = now - lastScoresFetchTime;
+    if (timeSinceScores >= FIFTEEN_MINS || Object.keys(teamScores).length === 0) {
+      fetchScores();
+    }
 
-      // Force refresh on mount if previous attempt was an error or returned zero articles
-      if (cacheEntry.error || !cacheEntry.articles || cacheEntry.articles.length === 0) {
-        return true;
-      }
-
-      const age = now - (cacheEntry.timestamp || 0);
-      return age > CACHE_EXPIRY_MS;
-    });
-
-    if (missing.length > 0 || expired.length > 0) {
-      if (expired.length > 0 && missing.length === 0) {
-        console.log(`Auto-refreshing stale or failed sports feeds: ${expired.join(", ")}`);
-      }
+    // Check if news fetch is expired or any team is missing
+    const missingNews = settings.teams.some(t => !newsCache[t]);
+    const timeSinceNews = now - lastNewsFetchTime;
+    if (timeSinceNews >= THIRTY_MINS || missingNews) {
       fetchNews();
     }
-  }, []);
+  }, [settings.teams.join(",")]);
 
   // Handle Team Actions
   const handleAddTeam = (teamName: string) => {
@@ -1663,18 +1717,9 @@ export default function App() {
                           </div>
                           
                           <div className="flex items-center gap-3">
-                            {data?.timestamp && (
-                              <span className="text-[10px] text-slate-500 font-medium">
-                                Updated: {new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            )}
-                            <button 
-                              onClick={() => fetchNews([team])}
-                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-100 rounded-lg transition-colors"
-                              title="Recrawl this team"
-                            >
-                              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                            </button>
+                            <span className="text-[10px] font-bold tracking-tight select-none bg-slate-150/50 dark:bg-slate-950/40 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-850 text-slate-500 dark:text-slate-400">
+                              As of {appOpenedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
                           </div>
                         </div>
 
