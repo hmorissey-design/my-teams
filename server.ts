@@ -465,6 +465,14 @@ function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
   });
 }
 
+// Global in-memory cache for sports news to avoid repetitive Google RSS lookups
+interface NewsCacheEntry {
+  result: any;
+  timestamp: number;
+}
+const globalNewsCache: Record<string, NewsCacheEntry> = {};
+const NEWS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache for news
+
 // Sports news search API
 app.post("/api/news", async (req, res) => {
   try {
@@ -479,8 +487,29 @@ app.post("/api/news", async (req, res) => {
     const results: any[] = [];
     for (let i = 0; i < teams.length; i++) {
       const team = teams[i];
-      if (i > 0) {
-        // Sequential fetch delay with minor random jitter to avoid triggering Google News concurrent request IP blocks
+      
+      // Calculate a unique cache key based on team, recency window, custom sites, and feed mode
+      const sortedSites = Array.isArray(customSites) 
+        ? [...customSites].map(s => s.toLowerCase().trim()).sort().join(",") 
+        : "";
+      const cacheKey = `${team.toLowerCase().trim()}_${days}_${sortedSites}_${feedMode}`;
+      
+      // Check cache first
+      const cached = globalNewsCache[cacheKey];
+      const now = Date.now();
+      if (cached && (now - cached.timestamp < NEWS_CACHE_TTL_MS)) {
+        // Return cached result (with a minor tweak to the timestamp to look fresh, or keeping it original)
+        results.push({
+          ...cached.result,
+          fromCache: true,
+          cacheAgeMs: now - cached.timestamp
+        });
+        continue;
+      }
+
+      if (results.filter(r => !r.fromCache).length > 0) {
+        // Sequential fetch delay only when we are ACTUALLY making a network request
+        // This pacing delay with minor random jitter avoids triggering Google News concurrent request IP blocks
         await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 400));
       }
 
@@ -660,7 +689,7 @@ app.post("/api/news", async (req, res) => {
         }
 
         // Return feed output directly
-        results.push({
+        const resultItem = {
           team,
           summary: summaryText,
           links: links.length > 0 ? links : [
@@ -683,7 +712,17 @@ app.post("/api/news", async (req, res) => {
           },
           // If we failed to get articles and primary fetch wasn't completely successful
           error: topArticles.length === 0 && (rssStatus !== "200" || (generalRssStatus && generalRssStatus !== "200")),
-        });
+        };
+
+        results.push(resultItem);
+
+        // Cache the successful/valid result (avoid caching transient complete connection failures)
+        if (!resultItem.error) {
+          globalNewsCache[cacheKey] = {
+            result: resultItem,
+            timestamp: Date.now()
+          };
+        }
       } catch (e: any) {
         console.warn(`Error aggregating feed for ${team}:`, e.message || e);
         results.push({
