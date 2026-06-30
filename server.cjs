@@ -629,7 +629,7 @@ function formatGameDate(dateStr) {
   }
 }
 var globalScoreboardCache = {};
-var CACHE_TTL_MS = 60 * 1e3;
+var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 async function getCachedScoreboard(key, url) {
   const cached = globalScoreboardCache[key];
   const now = Date.now();
@@ -794,71 +794,60 @@ app.post("/api/scores", async (req, res) => {
         }
       }
       if (matchedGames.length > 0) {
-        matchedGames.sort((a, b) => {
-          const stateScore = (g) => {
-            const state2 = g.event.status?.type?.state;
-            if (state2 === "in") return 3;
-            if (state2 === "post") return 2;
-            return 1;
-          };
-          const scoreA = stateScore(a);
-          const scoreB = stateScore(b);
-          if (scoreA !== scoreB) {
-            return scoreB - scoreA;
+        let selectedGame = null;
+        let isToday = false;
+        const now = /* @__PURE__ */ new Date();
+        const todayStr = now.toDateString();
+        const gamesToday = matchedGames.filter((g) => {
+          try {
+            const d = new Date(g.event.date);
+            return d.toDateString() === todayStr;
+          } catch {
+            return false;
           }
-          const dateA = new Date(a.event.date).getTime();
-          const dateB = new Date(b.event.date).getTime();
-          const now = Date.now();
-          return Math.abs(dateA - now) - Math.abs(dateB - now);
         });
-        const bestGame = matchedGames[0];
-        const { event, competition, matchedCompetitor } = bestGame;
-        const opponent = competition.competitors.find((c) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
-        const state = event.status?.type?.state;
-        const detail = event.status?.type?.detail || "";
-        const homeCompetitor = competition.competitors.find((c) => c.homeAway === "home");
-        const awayCompetitor = competition.competitors.find((c) => c.homeAway === "away");
-        const homeName = homeCompetitor?.team?.abbreviation || homeCompetitor?.team?.name || "Home";
-        const awayName = awayCompetitor?.team?.abbreviation || awayCompetitor?.team?.name || "Away";
-        const homeScore = homeCompetitor?.score || "0";
-        const awayScore = awayCompetitor?.score || "0";
-        let scoreText = "";
-        if (state === "in") {
-          scoreText = `Live: ${awayName} ${awayScore} @ ${homeName} ${homeScore} (${detail})`;
-        } else if (state === "post") {
-          scoreText = `Final: ${awayName} ${awayScore}, ${homeName} ${homeScore}`;
+        const upcomingGames = matchedGames.filter((g) => {
+          try {
+            const d = new Date(g.event.date);
+            return d.getTime() > now.getTime() && d.toDateString() !== todayStr;
+          } catch {
+            return false;
+          }
+        });
+        if (gamesToday.length > 0) {
+          gamesToday.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
+          selectedGame = gamesToday[0];
+          isToday = true;
+        } else if (upcomingGames.length > 0) {
+          upcomingGames.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
+          selectedGame = upcomingGames[0];
+          isToday = false;
         } else {
+          matchedGames.sort((a, b) => new Date(b.event.date).getTime() - new Date(a.event.date).getTime());
+          selectedGame = matchedGames[0];
+          isToday = false;
+        }
+        if (selectedGame) {
+          const { event, competition, matchedCompetitor } = selectedGame;
+          const opponent = competition.competitors.find((c) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
+          const state = event.status?.type?.state || "pre";
+          const detail = event.status?.type?.detail || "";
           const isHome = matchedCompetitor.homeAway === "home";
           const oppName = opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp";
           const formattedDate = formatGameDate(event.date);
-          scoreText = `${formattedDate} ${isHome ? "vs" : "@"} ${oppName}`;
+          const scoreText = `${formattedDate} ${isHome ? "vs" : "@"} ${oppName}`;
+          scores[teamName] = {
+            state: "pre",
+            detail,
+            scoreText,
+            sport: selectedGame.sportKey,
+            eventDate: event.date,
+            opponentName: oppName,
+            isHome,
+            isToday,
+            nextGame: null
+          };
         }
-        let nextGameData = null;
-        if (state === "post") {
-          const upcomingGames = matchedGames.filter((g) => g.event.status?.type?.state === "pre");
-          if (upcomingGames.length > 0) {
-            upcomingGames.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
-            const nextGame = upcomingGames[0];
-            const nextComp = nextGame.competition;
-            const nextMatchedComp = nextGame.matchedCompetitor;
-            const nextOpponent = nextComp.competitors.find((c) => c.id !== nextMatchedComp.team.id) || nextComp.competitors[0];
-            nextGameData = {
-              eventDate: nextGame.event.date,
-              opponentName: nextOpponent?.team?.abbreviation || nextOpponent?.team?.displayName || nextOpponent?.team?.name || "Opp",
-              isHome: nextMatchedComp.homeAway === "home"
-            };
-          }
-        }
-        scores[teamName] = {
-          state,
-          detail,
-          scoreText,
-          sport: bestGame.sportKey,
-          eventDate: event.date,
-          opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
-          isHome: matchedCompetitor.homeAway === "home",
-          nextGame: nextGameData
-        };
       }
     }
     res.json({ scores });
