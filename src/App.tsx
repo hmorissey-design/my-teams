@@ -237,16 +237,10 @@ function filterSitesForTeam(teamName: string, customSites: string[]): string[] {
 }
 
 // Client-side game schedule local timezone formatter helper
-function getDisplayScoreText(scoreData: any): string {
-  if (!scoreData) return "";
-  const { state, detail, scoreText, eventDate, opponentName, isHome } = scoreData;
-  if (state === "in" || state === "post" || !eventDate) {
-    return scoreText || ""; // Live and Final states are pre-formatted
-  }
-
-  // Format upcoming game date in browser's local timezone
+// Client-side game schedule local timezone formatter helper
+function formatGameDate(dateStr: string): string {
   try {
-    const d = new Date(eventDate);
+    const d = new Date(dateStr);
     const now = new Date();
     
     const isToday = d.toDateString() === now.toDateString();
@@ -257,52 +251,131 @@ function getDisplayScoreText(scoreData: any): string {
     
     const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    let formattedDate = "";
     if (isToday) {
-      formattedDate = `Today ${timeStr}`;
+      return `Today ${timeStr}`;
     } else if (isTomorrow) {
-      formattedDate = `Tomorrow ${timeStr}`;
+      return `Tomorrow ${timeStr}`;
     } else {
       const monthStr = d.toLocaleDateString([], { month: 'short' });
       const dayStr = d.toLocaleDateString([], { day: 'numeric' });
-      formattedDate = `${monthStr} ${dayStr} ${timeStr}`;
+      return `${monthStr} ${dayStr} ${timeStr}`;
+    }
+  } catch {
+    return "";
+  }
+}
+
+function getDisplayScoreText(scoreData: any): string {
+  if (!scoreData || !scoreData.eventDate) return "";
+  const { isHome, opponentName, eventDate, isToday } = scoreData;
+
+  try {
+    const d = new Date(eventDate);
+    const now = new Date();
+    const isActuallyToday = d.toDateString() === now.toDateString();
+    
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = d.toDateString() === tomorrow.toDateString();
+    
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    let label = "";
+    if (isActuallyToday || isToday) {
+      label = `Game Today • ${timeStr}`;
+    } else if (isTomorrow) {
+      label = `Tomorrow • ${timeStr}`;
+    } else {
+      const monthStr = d.toLocaleDateString([], { month: 'short' });
+      const dayStr = d.toLocaleDateString([], { day: 'numeric' });
+      label = `${monthStr} ${dayStr} • ${timeStr}`;
     }
 
-    return `${formattedDate} ${isHome ? "vs" : "@"} ${opponentName || "Opponent"}`;
+    return `${label} ${isHome ? "vs" : "@"} ${opponentName || "Opponent"}`;
   } catch {
-    return scoreText || "";
+    return scoreData.scoreText || "";
   }
 }
 
 function getDisplayNextGameText(nextGame: any): string {
-  if (!nextGame || !nextGame.eventDate) return "";
-  try {
-    const d = new Date(nextGame.eventDate);
-    const now = new Date();
-    
-    const isToday = d.toDateString() === now.toDateString();
-    
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const isTomorrow = d.toDateString() === tomorrow.toDateString();
-    
-    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    let formattedDate = "";
-    if (isToday) {
-      formattedDate = `Today ${timeStr}`;
-    } else if (isTomorrow) {
-      formattedDate = `Tomorrow ${timeStr}`;
-    } else {
-      const monthStr = d.toLocaleDateString([], { month: 'short' });
-      const dayStr = d.toLocaleDateString([], { day: 'numeric' });
-      formattedDate = `${monthStr} ${dayStr} ${timeStr}`;
-    }
+  return getDisplayScoreText(nextGame);
+}
 
-    return `${formattedDate} ${nextGame.isHome ? "vs" : "@"} ${nextGame.opponentName || "Opponent"}`;
-  } catch {
-    return "";
+function getSportForScoreboardKey(key: string): string {
+  if (key === "nhl" || key === "ahl") return "hockey";
+  if (key === "mlb" || key === "milb") return "baseball";
+  if (key === "nba") return "basketball";
+  if (key === "nfl") return "football";
+  if (["premier", "mls", "laliga", "seriea", "bundesliga", "ligue1", "ligamx"].includes(key)) return "soccer";
+  return "other";
+}
+
+function transformMlbStatsToEspnClient(mlbData: any): any {
+  const events: any[] = [];
+  if (mlbData && Array.isArray(mlbData.dates)) {
+    for (const dateObj of mlbData.dates) {
+      if (!Array.isArray(dateObj.games)) continue;
+      for (const game of dateObj.games) {
+        const awayTeam = game.teams?.away;
+        const homeTeam = game.teams?.home;
+        if (!awayTeam?.team || !homeTeam?.team) continue;
+        
+        const awayName = awayTeam.team.name || "";
+        const homeName = homeTeam.team.name || "";
+        const abstractState = game.status?.abstractGameState || "";
+        const detailedState = game.status?.detailedState || "";
+        
+        let state = "pre";
+        if (abstractState === "Live" || detailedState === "In Progress" || detailedState === "Live") {
+          state = "in";
+        } else if (abstractState === "Final" || detailedState === "Final" || detailedState === "Game Over" || detailedState === "Completed") {
+          state = "post";
+        }
+        
+        events.push({
+          id: `milb_${game.gamePk}`,
+          date: game.gameDate,
+          status: {
+            type: {
+              state,
+              detail: detailedState || abstractState || "Scheduled"
+            }
+          },
+          competitions: [
+            {
+              id: `milb_${game.gamePk}`,
+              date: game.gameDate,
+              competitors: [
+                {
+                  id: `away_${awayTeam.team.id}`,
+                  homeAway: "away",
+                  score: String(awayTeam.score ?? 0),
+                  team: {
+                    id: `away_${awayTeam.team.id}`,
+                    name: awayName,
+                    displayName: awayName,
+                    abbreviation: awayName.slice(0, 3).toUpperCase()
+                  }
+                },
+                {
+                  id: `home_${homeTeam.team.id}`,
+                  homeAway: "home",
+                  score: String(homeTeam.score ?? 0),
+                  team: {
+                    id: `home_${homeTeam.team.id}`,
+                    name: homeName,
+                    displayName: homeName,
+                    abbreviation: homeName.slice(0, 3).toUpperCase()
+                  }
+                }
+              ]
+            }
+          ]
+        });
+      }
+    }
   }
+  return { events };
 }
 
 const SCOREBOARD_URLS = {
@@ -317,7 +390,8 @@ const SCOREBOARD_URLS = {
   seriea: "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
   bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
   ligue1: "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
-  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+  ligamx: "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard",
+  milb: "https://statsapi.mlb.com/api/v1/schedule?sportId=11"
 };
 
 async function fetchJsonWithFallbackProxies(url: string): Promise<any> {
@@ -563,9 +637,21 @@ export default function App() {
       const boards = await Promise.all(
         keys.map(async (key) => {
           try {
-            const urlWithCacheBust = `${SCOREBOARD_URLS[key]}?_t=${Date.now()}`;
-            const data = await fetchJsonWithFallbackProxies(urlWithCacheBust);
+            let targetUrl = SCOREBOARD_URLS[key];
+            if (key === "milb") {
+              const today = new Date();
+              const startDateStr = today.toISOString().split("T")[0];
+              const endDate = new Date();
+              endDate.setDate(today.getDate() + 14); // 2 weeks in the future
+              const endDateStr = endDate.toISOString().split("T")[0];
+              targetUrl = `${targetUrl}&startDate=${startDateStr}&endDate=${endDateStr}`;
+            }
+            const urlWithCacheBust = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+            let data = await fetchJsonWithFallbackProxies(urlWithCacheBust);
             if (data) {
+              if (key === "milb") {
+                data = transformMlbStatsToEspnClient(data);
+              }
               return { key, data };
             }
           } catch (err) {
@@ -591,6 +677,14 @@ export default function App() {
               const teamObj = competitor.team;
               if (!teamObj) continue;
 
+              const teamSport = getSportForTeam(teamName);
+              const boardSport = getSportForScoreboardKey(board.key);
+              
+              // Only match if the sports align to prevent cross-sport false positives (e.g., Buffalo Bisons matching Buffalo Bills)
+              if (teamSport !== "general" && boardSport !== "other" && teamSport !== boardSport) {
+                continue;
+              }
+
               if (matchesTeamClient(teamName, teamObj.displayName || "", teamObj.name || "")) {
                 matchedGames.push({
                   event,
@@ -604,75 +698,65 @@ export default function App() {
         }
 
         if (matchedGames.length > 0) {
-          matchedGames.sort((a, b) => {
-            const stateScore = (g: any) => {
-              const s = g.event.status?.type?.state;
-              if (s === "in") return 3;   // Live
-              if (s === "post") return 2; // Finished
-              return 1;                   // Scheduled
-            };
-            
-            const scoreA = stateScore(a);
-            const scoreB = stateScore(b);
-            if (scoreA !== scoreB) {
-              return scoreB - scoreA;
+          let selectedGame: any = null;
+          let isToday = false;
+
+          const now = new Date();
+          const todayStr = now.toDateString();
+
+          const gamesToday = matchedGames.filter(g => {
+            try {
+              const d = new Date(g.event.date);
+              return d.toDateString() === todayStr;
+            } catch {
+              return false;
             }
-            
-            const dateA = new Date(a.event.date).getTime();
-            const dateB = new Date(b.event.date).getTime();
-            const now = Date.now();
-            return Math.abs(dateA - now) - Math.abs(dateB - now);
           });
 
-          const bestGame = matchedGames[0];
-          const { event, competition, matchedCompetitor } = bestGame;
-          const opponent = competition.competitors.find((c: any) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
-
-          const state = event.status?.type?.state;
-          const detail = event.status?.type?.detail || "";
-
-          const homeCompetitor = competition.competitors.find((c: any) => c.homeAway === "home");
-          const awayCompetitor = competition.competitors.find((c: any) => c.homeAway === "away");
-          const homeName = homeCompetitor?.team?.abbreviation || homeCompetitor?.team?.name || "Home";
-          const awayName = awayCompetitor?.team?.abbreviation || awayCompetitor?.team?.name || "Away";
-          const homeScore = homeCompetitor?.score || "0";
-          const awayScore = awayCompetitor?.score || "0";
-
-          let scoreText = "";
-          if (state === "in") {
-            scoreText = `Live: ${awayName} ${awayScore} @ ${homeName} ${homeScore} (${detail})`;
-          } else if (state === "post") {
-            scoreText = `Final: ${awayName} ${awayScore}, ${homeName} ${homeScore}`;
-          }
-
-          let nextGameData: any = null;
-          if (state === "post") {
-            const upcomingGames = matchedGames.filter(g => g.event.status?.type?.state === "pre");
-            if (upcomingGames.length > 0) {
-              upcomingGames.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
-              const nextGame = upcomingGames[0];
-              const nextComp = nextGame.competition;
-              const nextMatchedComp = nextGame.matchedCompetitor;
-              const nextOpponent = nextComp.competitors.find((c: any) => c.id !== nextMatchedComp.team.id) || nextComp.competitors[0];
-              
-              nextGameData = {
-                eventDate: nextGame.event.date,
-                opponentName: nextOpponent?.team?.abbreviation || nextOpponent?.team?.displayName || nextOpponent?.team?.name || "Opp",
-                isHome: nextMatchedComp.homeAway === "home"
-              };
+          const upcomingGames = matchedGames.filter(g => {
+            try {
+              const d = new Date(g.event.date);
+              return d.getTime() > now.getTime() && d.toDateString() !== todayStr;
+            } catch {
+              return false;
             }
+          });
+
+          if (gamesToday.length > 0) {
+            gamesToday.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
+            selectedGame = gamesToday[0];
+            isToday = true;
+          } else if (upcomingGames.length > 0) {
+            upcomingGames.sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime());
+            selectedGame = upcomingGames[0];
+            isToday = false;
+          } else {
+            matchedGames.sort((a, b) => new Date(b.event.date).getTime() - new Date(a.event.date).getTime());
+            selectedGame = matchedGames[0];
+            isToday = false;
           }
 
-          clientScores[teamName] = {
-            state,
-            detail,
-            scoreText,
-            sport: bestGame.sportKey,
-            eventDate: event.date,
-            opponentName: opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp",
-            isHome: matchedCompetitor.homeAway === "home",
-            nextGame: nextGameData
-          };
+          if (selectedGame) {
+            const { event, competition, matchedCompetitor } = selectedGame;
+            const opponent = competition.competitors.find((c: any) => c.id !== matchedCompetitor.team.id) || competition.competitors[0];
+
+            const state = event.status?.type?.state || "pre";
+            const detail = event.status?.type?.detail || "";
+            const isHome = matchedCompetitor.homeAway === "home";
+            const oppName = opponent?.team?.abbreviation || opponent?.team?.displayName || opponent?.team?.name || "Opp";
+
+            clientScores[teamName] = {
+              state: "pre",
+              detail,
+              scoreText: `${formatGameDate(event.date)} ${isHome ? "vs" : "@"} ${oppName}`,
+              sport: selectedGame.sportKey,
+              eventDate: event.date,
+              opponentName: oppName,
+              isHome,
+              isToday,
+              nextGame: null
+            };
+          }
         }
       }
 
@@ -717,17 +801,6 @@ export default function App() {
     }
   };
 
-  // Background score interval updates (every 15 minutes)
-  useEffect(() => {
-    if (settings.teams.length === 0) return;
-
-    const interval = setInterval(() => {
-      fetchScores();
-    }, 15 * 60 * 1000); // 15 minutes
-
-    return () => clearInterval(interval);
-  }, [settings.teams.join(",")]);
-
   // Background news interval updates (every 30 minutes)
   useEffect(() => {
     if (settings.teams.length === 0) return;
@@ -747,11 +820,11 @@ export default function App() {
       // Update visual session timestamp
       setAppOpenedTime(new Date());
 
-      const FIFTEEN_MINS = 15 * 60 * 1000;
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       const THIRTY_MINS = 30 * 60 * 1000;
 
-      // Lazy check scores fetch
-      if (settings.teams.length > 0 && now - lastScoresFetchTime >= FIFTEEN_MINS) {
+      // Lazy check scores/schedules fetch
+      if (settings.teams.length > 0 && now - lastScoresFetchTime >= TWENTY_FOUR_HOURS) {
         fetchScores();
       }
 
@@ -1398,12 +1471,12 @@ export default function App() {
     if (settings.teams.length === 0) return;
 
     const now = Date.now();
-    const FIFTEEN_MINS = 15 * 60 * 1000;
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
     const THIRTY_MINS = 30 * 60 * 1000;
 
-    // Check if score fetch is expired or empty
+    // Check if score/schedule fetch is expired or empty
     const timeSinceScores = now - lastScoresFetchTime;
-    if (timeSinceScores >= FIFTEEN_MINS || Object.keys(teamScores).length === 0) {
+    if (timeSinceScores >= TWENTY_FOUR_HOURS || Object.keys(teamScores).length === 0) {
       fetchScores();
     }
 
@@ -1682,38 +1755,21 @@ export default function App() {
                             {teamScores[team] && (
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <div className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 border transition-all ${
-                                teamScores[team].state === 'in'
-                                  ? settings.darkMode
-                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 animate-pulse font-extrabold'
-                                    : 'bg-amber-500/10 text-amber-600 border-amber-500/20 animate-pulse font-extrabold'
-                                  : teamScores[team].state === 'post'
+                                  teamScores[team].isToday
                                     ? settings.darkMode
+                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-extrabold shadow-sm'
+                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 font-extrabold shadow-sm'
+                                    : settings.darkMode
                                       ? 'bg-slate-950/40 text-slate-400 border-slate-800/80 font-medium'
                                       : 'bg-slate-100 text-slate-550 border-slate-200 font-medium'
-                                    : settings.darkMode
-                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                      : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                              }`} title={teamScores[team].detail}>
-                                {teamScores[team].state === 'in' && (
-                                  <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                                  </span>
-                                )}
-                                <span>{getDisplayScoreText(teamScores[team])}</span>
-                              </div>
-
-                              {teamScores[team].state === 'post' && teamScores[team].nextGame && (
-                                <div className={`px-2.5 py-1 rounded-xl text-[11px] font-medium border transition-all ${
-                                  settings.darkMode
-                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:border-emerald-500/30 hover:bg-emerald-500/15'
-                                    : 'bg-emerald-50 text-emerald-700 border-emerald-150 hover:bg-emerald-100/50 shadow-xs'
                                 }`}>
-                                  <span>Next: {getDisplayNextGameText(teamScores[team].nextGame)}</span>
+                                  <span className="flex items-center gap-1">
+                                    <span>📅</span>
+                                    <span>{getDisplayScoreText(teamScores[team])}</span>
+                                  </span>
                                 </div>
-                              )}
-                            </div>
-                          )}
+                              </div>
+                            )}
                           </div>
                           
                           <div className="flex items-center gap-3">
