@@ -301,6 +301,29 @@ function getDisplayNextGameText(nextGame: any): string {
   return getDisplayScoreText(nextGame);
 }
 
+function getFormattedTeamName(fullName: string): string {
+  try {
+    for (const sport of SPORTS_PRESETS) {
+      for (const league of sport.leagues) {
+        const found = league.teams.find(t => t.name.toLowerCase() === fullName.toLowerCase());
+        if (found) {
+          let leagueDisplay = league.id.toUpperCase();
+          if (league.id === "premier") leagueDisplay = "EPL";
+          if (league.id === "laliga") leagueDisplay = "LaLiga";
+          if (league.id === "seriea") leagueDisplay = "SerieA";
+          if (league.id === "bundesliga") leagueDisplay = "Bundesliga";
+          if (league.id === "ligue1") leagueDisplay = "Ligue1";
+          if (league.id === "ligamx") leagueDisplay = "LigaMX";
+          return `${leagueDisplay}: ${found.display}`;
+        }
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return fullName;
+}
+
 function getSportForScoreboardKey(key: string): string {
   if (key === "nhl" || key === "ahl") return "hockey";
   if (key === "mlb" || key === "milb") return "baseball";
@@ -1711,7 +1734,7 @@ export default function App() {
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 shadow-xs'
                       }`}
                     >
-                      {team}
+                      {getFormattedTeamName(team)}
                     </button>
                   ))}
                 </div>
@@ -1739,47 +1762,58 @@ export default function App() {
                     return (
                       <div 
                         key={team} 
-                        className={`p-5 rounded-2xl border transition-all ${
+                        className={`rounded-2xl border overflow-hidden transition-all ${
                           settings.darkMode 
                             ? 'bg-slate-900 border-slate-800/80 hover:border-slate-700/80' 
                             : 'bg-white border-slate-200 hover:shadow-lg hover:border-slate-250 transition-shadow'
                         }`}
                       >
-                        {/* Team Title Guard */}
-                        <div className={`flex items-center justify-between border-b pb-3 mb-4 flex-wrap gap-2 ${settings.darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                          <div className="flex items-center gap-2.5 flex-wrap">
-                            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-400/20 font-black text-xs text-emerald-400 shrink-0">
-                              {team.substring(0, 3).toUpperCase()}
-                            </div>
-                            <h3 className={`text-base font-bold font-display ${settings.darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{team}</h3>
+                        {/* Beautiful Colored Header Bar */}
+                        <div className={`px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap ${
+                          settings.darkMode 
+                            ? 'bg-slate-950/60 border-slate-800/80' 
+                            : 'bg-slate-50 border-slate-250/80'
+                        }`}>
+                          <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
+                            
+                            {/* Shortened Team Name */}
+                            <h3 className={`text-xs sm:text-sm font-bold font-display tracking-tight truncate shrink-0 ${settings.darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+                              {getFormattedTeamName(team)}
+                            </h3>
+                            
+                            {/* Game Info Pill */}
                             {teamScores[team] && (
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <div className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 border transition-all ${
+                              <div className="min-w-0 truncate">
+                                <div className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all ${
                                   teamScores[team].isToday
                                     ? settings.darkMode
-                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-extrabold shadow-sm'
-                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 font-extrabold shadow-sm'
+                                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-extrabold shadow-sm'
+                                      : 'bg-emerald-50 text-emerald-700 border-emerald-250 font-extrabold shadow-sm'
                                     : settings.darkMode
-                                      ? 'bg-slate-950/40 text-slate-400 border-slate-800/80 font-medium'
-                                      : 'bg-slate-100 text-slate-550 border-slate-200 font-medium'
+                                      ? 'bg-slate-900 text-slate-400 border-slate-800/80 font-medium'
+                                      : 'bg-slate-100/80 text-slate-600 border-slate-200 font-medium'
                                 }`}>
-                                  <span className="flex items-center gap-1">
+                                  <span className="flex items-center gap-1 truncate">
                                     <span>📅</span>
-                                    <span>{getDisplayScoreText(teamScores[team])}</span>
+                                    <span className="truncate">{getDisplayScoreText(teamScores[team])}</span>
                                   </span>
                                 </div>
                               </div>
                             )}
                           </div>
                           
-                          <div className="flex items-center gap-3">
-                            <span className="text-[10px] font-bold tracking-tight select-none bg-slate-150/50 dark:bg-slate-950/40 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-850 text-slate-500 dark:text-slate-400">
+                          {/* "As of" timestamp aligned perfectly to the right */}
+                          <div className="flex items-center shrink-0 ml-auto">
+                            <span className="text-[9px] font-bold tracking-tight select-none bg-slate-200/50 dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-250 dark:border-slate-800 text-slate-500 dark:text-slate-400">
                               As of {appOpenedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                         </div>
 
-                        {/* Content Body */}
+                        {/* Card Content Body Wrapper */}
+                        <div className="p-5">
+                          {/* Content Body */}
                         {!data ? (
                           <div className="py-8 text-center bg-slate-950/20 rounded-xl border border-dashed border-slate-800">
                             <Newspaper className="w-8 h-8 text-slate-600 mx-auto mb-2" />
@@ -1972,6 +2006,7 @@ export default function App() {
                             </div>
                           </div>
                         )}
+                        </div>
                       </div>
                     );
                   })}
