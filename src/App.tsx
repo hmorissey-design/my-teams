@@ -1805,7 +1805,11 @@ export default function App() {
                           
                           {/* "As of" timestamp aligned perfectly to the right */}
                           <div className="flex items-center shrink-0 ml-auto">
-                            <span className="text-[9px] font-bold tracking-tight select-none bg-slate-200/50 dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-250 dark:border-slate-800 text-slate-500 dark:text-slate-400">
+                            <span className={`text-[10px] font-bold tracking-tight select-none px-2 py-0.5 rounded-lg border transition-all ${
+                              settings.darkMode
+                                ? 'bg-slate-950/80 border-slate-800 text-slate-300'
+                                : 'bg-amber-100/70 border-amber-300/80 text-amber-950 font-extrabold shadow-2xs'
+                            }`}>
                               As of {appOpenedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>

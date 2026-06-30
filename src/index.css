@@ -7,6 +7,8 @@
   --font-mono: "Fira Code", monospace;
 }
 
+@variant dark (&:where(.dark, .dark *));
+
 /* 
   Elegant, eye-friendly, and battery-friendly cozy book-like tan and sand theme.
   Designed specifically for low eye-strain and excellent high-contrast readability on mobile screens.

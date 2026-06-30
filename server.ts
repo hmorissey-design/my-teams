@@ -1117,8 +1117,25 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    
+    // Serve static assets with caching headers
+    app.use(express.static(distPath, {
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith("index.html")) {
+          // Never cache index.html so updates are immediate
+          res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+        } else {
+          // Hashed assets (JS, CSS, images) can be cached permanently
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      }
+    }));
+
     app.get("*", (req, res) => {
+      // Ensure the SPA fallback index.html is never cached either
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
