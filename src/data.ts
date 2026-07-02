@@ -31,17 +31,17 @@ export const POPULAR_TEAMS = SPORTS_PRESETS.flatMap(sport =>
   }))
 );
 
-export const GOOGLE_ADMOB_ADS: AdData[] = [
+export const GOOGLE_ADSENSE_ADS: AdData[] = [
   {
     id: "ad-1",
-    headline: "⚾ Play Base Run Master! Free to download on Google Play.",
-    sponsor: "Google Play Games",
-    cta: "Install",
+    headline: "⚾ Play Base Run Master! Free to play online directly in your browser.",
+    sponsor: "Web Arcade Hub",
+    cta: "Play Now",
     color: "from-blue-600 to-emerald-600"
   },
   {
     id: "ad-2",
-    headline: "🔥 Upgrade to MY TEAM NEWS Premium: No Banner Ads, Plus Live Audio Feeds!",
+    headline: "🔥 Upgrade to MY TEAM NEWS Premium: No Display Ads, Plus Live Audio Feeds!",
     sponsor: "My Team News Pro",
     cta: "Go Ad-Free",
     color: "from-purple-600 to-indigo-600"
@@ -55,8 +55,8 @@ export const GOOGLE_ADMOB_ADS: AdData[] = [
   },
   {
     id: "ad-4",
-    headline: "🎮 Sports Tycoon Manager: Lead your own club to championship victory!",
-    sponsor: "Megaplay Games",
+    headline: "🎮 Sports Tycoon Manager: Lead your own club to championship victory on Web!",
+    sponsor: "Megaplay Web Games",
     cta: "Play",
     color: "from-pink-600 to-rose-600"
   },

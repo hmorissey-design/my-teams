@@ -21,7 +21,7 @@ import {
   ArrowDown
 } from "lucide-react";
 import { TeamNews, AppSettings, AdData } from "./types";
-import { SPORTS_PRESETS, GOOGLE_ADMOB_ADS } from "./data";
+import { SPORTS_PRESETS, GOOGLE_ADSENSE_ADS } from "./data";
 // @ts-ignore
 import appLogo from "./assets/images/sports_app_logo_1782243294195.jpg";
 
@@ -837,15 +837,15 @@ export default function App() {
     }
   };
 
-  // Reassuring mount/resume loader flash
+  // Reassuring mount/resume loader flash - Auto-dismisses isSearchingFlash after 3.5 seconds
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!isLoading) {
+    if (isSearchingFlash) {
+      const timer = setTimeout(() => {
         setIsSearchingFlash(false);
-      }
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [isLoading]);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [isSearchingFlash]);
 
   // Background news interval updates (every 30 minutes)
   useEffect(() => {
@@ -867,11 +867,10 @@ export default function App() {
       setAppOpenedTime(new Date());
       setIsSearchingFlash(true);
 
-      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       const THIRTY_MINS = 30 * 60 * 1000;
 
-      // Lazy check scores/schedules fetch
-      if (settings.teams.length > 0 && now - lastScoresFetchTime >= TWENTY_FOUR_HOURS) {
+      // Lazy check scores/schedules fetch (frequent updates to prevent yesterday's game showing)
+      if (settings.teams.length > 0 && now - lastScoresFetchTime >= THIRTY_MINS) {
         fetchScores();
       }
 
@@ -937,10 +936,24 @@ export default function App() {
   const [expandedLeagues, setExpandedLeagues] = useState<string[]>([]);   // start fully collapsed
   const [selectedTeamTab, setSelectedTeamTab] = useState<string>("All");
   const [isMyTrackedTeamsExpanded, setIsMyTrackedTeamsExpanded] = useState(false);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isStandalone = 
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone ||
+        document.referrer.includes('android-app://') ||
+        window.location.search.includes('utm_source=playstore') ||
+        window.location.search.includes('platform=android') ||
+        window.location.search.includes('platform=apk');
+      setIsStandaloneApp(isStandalone);
+    }
+  }, []);
 
   // Rotating Ads
-  const [topAd, setTopAd] = useState<AdData>(GOOGLE_ADMOB_ADS[0]);
-  const [bottomAd, setBottomAd] = useState<AdData>(GOOGLE_ADMOB_ADS[1]);
+  const [topAd, setTopAd] = useState<AdData>(GOOGLE_ADSENSE_ADS[0]);
+  const [bottomAd, setBottomAd] = useState<AdData>(GOOGLE_ADSENSE_ADS[1]);
 
   // Synchronize Settings to LocalStorage
   useEffect(() => {
@@ -960,10 +973,10 @@ export default function App() {
   // Rotate ads on interval
   useEffect(() => {
     const interval = setInterval(() => {
-      const randomTop = GOOGLE_ADMOB_ADS[Math.floor(Math.random() * GOOGLE_ADMOB_ADS.length)];
-      let randomBottom = GOOGLE_ADMOB_ADS[Math.floor(Math.random() * GOOGLE_ADMOB_ADS.length)];
+      const randomTop = GOOGLE_ADSENSE_ADS[Math.floor(Math.random() * GOOGLE_ADSENSE_ADS.length)];
+      let randomBottom = GOOGLE_ADSENSE_ADS[Math.floor(Math.random() * GOOGLE_ADSENSE_ADS.length)];
       while (randomBottom.id === randomTop.id) {
-        randomBottom = GOOGLE_ADMOB_ADS[Math.floor(Math.random() * GOOGLE_ADMOB_ADS.length)];
+        randomBottom = GOOGLE_ADSENSE_ADS[Math.floor(Math.random() * GOOGLE_ADSENSE_ADS.length)];
       }
       setTopAd(randomTop);
       setBottomAd(randomBottom);
@@ -1529,12 +1542,11 @@ export default function App() {
     if (settings.teams.length === 0) return;
 
     const now = Date.now();
-    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
     const THIRTY_MINS = 30 * 60 * 1000;
 
-    // Check if score/schedule fetch is expired or empty
+    // Check if score/schedule fetch is expired or empty (frequent check to keep schedules fresh)
     const timeSinceScores = now - lastScoresFetchTime;
-    if (timeSinceScores >= TWENTY_FOUR_HOURS || Object.keys(teamScores).length === 0) {
+    if (timeSinceScores >= THIRTY_MINS || Object.keys(teamScores).length === 0) {
       fetchScores();
     }
 
@@ -1612,8 +1624,8 @@ export default function App() {
       
       {/* ================= TOP AD BANNER ================= */}
       <div className={`w-full h-[90px] border-b flex items-center justify-center p-2 relative overflow-hidden transition-colors ${settings.darkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-        <div className="absolute top-1 left-2 bg-amber-500 text-[9px] font-black text-slate-950 px-1 py-0.5 rounded uppercase tracking-wider shadow-sm z-10 select-none">
-          AdMob Test Banner BannerTop
+        <div className={`absolute top-1 left-2 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shadow-sm z-10 select-none ${isStandaloneApp ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'}`}>
+          {isStandaloneApp ? 'Google AdMob Native Unit (APK Mode)' : 'Google AdSense Responsive Unit (PWA Mode)'}
         </div>
         
         <div className="w-full max-w-4xl flex items-center justify-between gap-4 px-4">
@@ -1622,13 +1634,13 @@ export default function App() {
               {topAd.sponsor[0]}
             </div>
             <div>
-              <div className="text-xs font-bold text-emerald-500 tracking-wide uppercase">{topAd.sponsor}</div>
+              <div className={`text-xs font-bold tracking-wide uppercase ${isStandaloneApp ? 'text-amber-500' : 'text-emerald-500'}`}>{topAd.sponsor}</div>
               <p className={`text-xs md:text-sm font-semibold leading-snug line-clamp-2 ${settings.darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
                 {topAd.headline}
               </p>
             </div>
           </div>
-          <button className={`shrink-0 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md active:scale-95`}>
+          <button className={`shrink-0 px-4 py-2 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 ${isStandaloneApp ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
             {topAd.cta}
           </button>
         </div>
@@ -1770,37 +1782,37 @@ export default function App() {
           ) : (
             <>
               {/* Dynamic Live News Status Bar */}
-              <div className={`flex items-center justify-between gap-4 p-3.5 rounded-2xl border transition-all ${
+              <div className={`flex items-center justify-between gap-4 py-1.5 px-3 rounded-xl border transition-all ${
                 settings.darkMode
                   ? 'bg-slate-900/60 border-slate-800/80 text-slate-300'
                   : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
               }`}>
                 {/* Status Indicator Title & Pulse */}
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider ${settings.darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider ${settings.darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
                     Sports Feed Status
                   </span>
                   
                   {isSearchingFlash ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-500 dark:bg-amber-500/10 border border-amber-500/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-500 dark:bg-amber-500/10 border border-amber-500/30">
+                      <span className="w-1 h-1 rounded-full bg-amber-500 animate-ping"></span>
                       Searching...
                     </span>
                   ) : isLoading ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/10 border border-emerald-500/30 animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/10 border border-emerald-500/30 animate-pulse">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500 animate-ping"></span>
                       Updating...
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/5 border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/5 border border-emerald-500/20">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
                       Synced
                     </span>
                   )}
                 </div>
 
                 {/* Next Update Status / Countdown */}
-                <div className={`text-[10px] font-bold tracking-tight select-none px-2.5 py-1 rounded-xl transition-all border ${
+                <div className={`text-[9px] sm:text-[10px] font-bold tracking-tight select-none px-2 py-0.5 rounded-lg transition-all border ${
                   isSearchingFlash
                     ? settings.darkMode 
                       ? 'bg-amber-950/40 text-amber-300 border-amber-500/20' 
@@ -1810,12 +1822,12 @@ export default function App() {
                       : 'bg-slate-100/80 text-slate-600 border-slate-200'
                 }`}>
                   {isSearchingFlash ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="animate-spin text-amber-500 inline-block">⚡</span>
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin text-amber-500 inline-block text-[10px]">⚡</span>
                       Crawling latest sport feeds...
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-0.5">
                       <span>⏰</span>
                       Next Update: {getNextUpdateString()}
                     </span>
@@ -1825,12 +1837,12 @@ export default function App() {
 
               {/* HORIZONTAL TEAM FILTER PILLS */}
               {settings.teams.length > 1 && (
-                <div className={`flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none border-b border-dashed pb-3 ${
+                <div className={`flex items-center gap-1 overflow-x-auto py-1 scrollbar-none border-b border-dashed pb-2 ${
                   settings.darkMode ? 'border-slate-800/50' : 'border-slate-200/50'
                 }`}>
                   <button
                     onClick={() => setSelectedTeamTab("All")}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border shrink-0 ${
                       selectedTeamTab === "All"
                         ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-sm font-extrabold'
                         : settings.darkMode
@@ -1844,7 +1856,7 @@ export default function App() {
                     <button
                       key={team}
                       onClick={() => setSelectedTeamTab(team)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 ${
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border shrink-0 ${
                         selectedTeamTab === team
                           ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-sm font-extrabold'
                           : settings.darkMode
@@ -2129,27 +2141,31 @@ export default function App() {
 
       {/* ================= BOTTOM AD BANNER ================= */}
       <div className={`w-full min-h-[90px] border-t flex flex-col items-center justify-center p-2 relative overflow-hidden transition-colors ${settings.darkMode ? 'bg-slate-900/90 border-slate-805' : 'bg-white border-slate-200 shadow-inner'}`}>
-        <div className="absolute top-1 left-2 bg-purple-500 text-[9px] font-black text-white px-1 py-0.5 rounded uppercase tracking-wider shadow-sm z-10 select-none">
-          AdMob Test Banner BannerBottom
+        <div className={`absolute top-1 left-2 text-[9px] font-black text-white px-1.5 py-0.5 rounded uppercase tracking-wider shadow-sm z-10 select-none ${isStandaloneApp ? 'bg-amber-600' : 'bg-purple-500'}`}>
+          {isStandaloneApp ? 'Google AdMob Smart Banner (APK Mode)' : 'Google AdSense Display Ad (PWA Mode)'}
         </div>
 
-        <div className="w-full max-w-4xl flex items-center justify-between gap-4 px-4 py-1">
+        <div className="w-full max-w-4xl flex items-center justify-between gap-4 px-4 py-1 pt-3">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${bottomAd.color} flex items-center justify-center text-white font-bold text-lg shadow-md`}>
               {bottomAd.sponsor[0]}
             </div>
             <div>
-              <div className="text-[10px] font-bold text-purple-400 tracking-wide uppercase">{bottomAd.sponsor}</div>
+              <div className={`text-[10px] font-bold tracking-wide uppercase ${isStandaloneApp ? 'text-amber-400' : 'text-purple-400'}`}>{bottomAd.sponsor}</div>
               <p className={`text-xs md:text-sm font-semibold leading-snug line-clamp-2 ${settings.darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
                 {bottomAd.headline}
               </p>
             </div>
           </div>
-          <button className={`shrink-0 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-95`}>
+          <button className={`shrink-0 px-4 py-2 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 ${isStandaloneApp ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-500 hover:bg-purple-600'}`}>
             {bottomAd.cta}
           </button>
         </div>
-        <div className="text-[8px] text-slate-500 uppercase tracking-widest mt-1">Publisher Account: Pub-48392019-3829 • Google AdMob SDK Sandbox</div>
+        <div className="text-[8px] text-slate-500 uppercase tracking-widest mt-1">
+          {isStandaloneApp 
+            ? 'AdMob App ID: ca-app-pub-48392019~3829 • Google Play APK Wrapper Native Ads Enabled' 
+            : 'Publisher Account: ca-pub-48392019-3829 • Google AdSense Active Display Units (Web PWA)'}
+        </div>
       </div>
 
       {/* ================= CONFIGURATION MODAL / SHEET ================= */}

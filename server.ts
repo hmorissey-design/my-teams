@@ -835,7 +835,7 @@ interface ScoreboardCache {
   timestamp: number;
 }
 const globalScoreboardCache: Record<string, ScoreboardCache> = {};
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours cache
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache (avoids yesterday's stale schedules)
 
 // Safe cached fetch
 // Safe cached fetch with dynamic dates for MiLB
