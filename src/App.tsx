@@ -634,6 +634,14 @@ export default function App() {
   });
 
   const [appOpenedTime, setAppOpenedTime] = useState<Date>(new Date());
+  const [isSearchingFlash, setIsSearchingFlash] = useState(true);
+  
+  const getNextUpdateString = () => {
+    const baseTime = lastNewsFetchTime || appOpenedTime.getTime();
+    const nextUpdateDate = new Date(baseTime + 30 * 60 * 1000);
+    return nextUpdateDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   const [customTeamInput, setCustomTeamInput] = useState("");
   const [customSiteInput, setCustomSiteInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -642,6 +650,11 @@ export default function App() {
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
   const [showSourcesSelector, setShowSourcesSelector] = useState(false);
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
+
+  const isGithubPages = typeof window !== "undefined" && window.location.hostname.includes("github.io");
+  const [dismissedGithubPagesNotice, setDismissedGithubPagesNotice] = useState(() => {
+    return typeof window !== "undefined" && !!localStorage.getItem("dismissed_github_pages_notice");
+  });
 
   const [teamScores, setTeamScores] = useState<Record<string, any>>(() => {
     const saved = localStorage.getItem("my_teams_scores");
@@ -824,6 +837,16 @@ export default function App() {
     }
   };
 
+  // Reassuring mount/resume loader flash
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!isLoading) {
+        setIsSearchingFlash(false);
+      }
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
   // Background news interval updates (every 30 minutes)
   useEffect(() => {
     if (settings.teams.length === 0) return;
@@ -842,6 +865,7 @@ export default function App() {
       
       // Update visual session timestamp
       setAppOpenedTime(new Date());
+      setIsSearchingFlash(true);
 
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       const THIRTY_MINS = 30 * 60 * 1000;
@@ -1322,6 +1346,8 @@ export default function App() {
   };
 
   // Crawl news from Express proxy
+  const [fetchStartTime, setFetchStartTime] = useState<number>(0);
+
   const fetchNews = async (forceTeams?: string[], forceRecencyDays?: number) => {
     const targetTeams = forceTeams || settings.teams;
     const targetRecency = typeof forceRecencyDays === "number" ? forceRecencyDays : settings.recencyDays;
@@ -1331,6 +1357,8 @@ export default function App() {
     }
 
     setIsLoading(true);
+    setIsSearchingFlash(true);
+    setFetchStartTime(Date.now());
     setErrorMsg(null);
     fetchScores(targetTeams);
 
@@ -1474,6 +1502,13 @@ export default function App() {
       const now = Date.now();
       setLastNewsFetchTime(now);
       localStorage.setItem("my_teams_last_news_fetch", String(now));
+      
+      const elapsed = Date.now() - (fetchStartTime || now);
+      const minFlashDuration = 4000; // 4 seconds
+      const remaining = Math.max(0, minFlashDuration - elapsed);
+      setTimeout(() => {
+        setIsSearchingFlash(false);
+      }, remaining);
     }
   };
 
@@ -1666,6 +1701,35 @@ export default function App() {
         {/* NEWS CONTAINER */}
         <div className="w-full flex flex-col gap-6">
           
+          {isGithubPages && !dismissedGithubPagesNotice && (
+            <div className={`p-4 rounded-2xl border flex items-start gap-3 relative transition-all ${
+              settings.darkMode 
+                ? 'bg-amber-950/20 border-amber-500/30 text-amber-300' 
+                : 'bg-amber-50 border-amber-200 text-amber-900 shadow-sm'
+            }`}>
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+              <div className="flex-1 pr-6">
+                <h4 className="text-xs font-bold uppercase tracking-wider mb-1">Static Hosting Detected (GitHub Pages)</h4>
+                <p className="text-xs leading-relaxed opacity-90">
+                  This page is served statically and does not run your backend server. Requests are fetched via public browser proxies which occasionally hit rate-limits or fail (causing proxy errors).
+                </p>
+                <p className="text-xs leading-relaxed mt-2 font-bold">
+                  💡 Please open your Koyeb App URL for a 100% stable, high-speed, proxy-free sports feed!
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  setDismissedGithubPagesNotice(true);
+                  localStorage.setItem("dismissed_github_pages_notice", "true");
+                }}
+                className="absolute top-3 right-3 p-1 rounded-lg hover:bg-amber-500/10 opacity-70 hover:opacity-100 transition-all text-xs font-bold"
+                aria-label="Dismiss static hosting warning"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Global Alert Notification / Fetch status */}
           {errorMsg && (
             <div className="p-4 bg-red-500/10 border border-red-500/25 rounded-2xl flex items-start gap-3">
@@ -1705,6 +1769,60 @@ export default function App() {
             </div>
           ) : (
             <>
+              {/* Dynamic Live News Status Bar */}
+              <div className={`flex items-center justify-between gap-4 p-3.5 rounded-2xl border transition-all ${
+                settings.darkMode
+                  ? 'bg-slate-900/60 border-slate-800/80 text-slate-300'
+                  : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
+              }`}>
+                {/* Status Indicator Title & Pulse */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider ${settings.darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+                    Sports Feed Status
+                  </span>
+                  
+                  {isSearchingFlash ? (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-500 dark:bg-amber-500/10 border border-amber-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                      Searching...
+                    </span>
+                  ) : isLoading ? (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/10 border border-emerald-500/30 animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      Updating...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/5 border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      Synced
+                    </span>
+                  )}
+                </div>
+
+                {/* Next Update Status / Countdown */}
+                <div className={`text-[10px] font-bold tracking-tight select-none px-2.5 py-1 rounded-xl transition-all border ${
+                  isSearchingFlash
+                    ? settings.darkMode 
+                      ? 'bg-amber-950/40 text-amber-300 border-amber-500/20' 
+                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                    : settings.darkMode
+                      ? 'bg-slate-950/60 text-slate-400 border-slate-800'
+                      : 'bg-slate-100/80 text-slate-600 border-slate-200'
+                }`}>
+                  {isSearchingFlash ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="animate-spin text-amber-500 inline-block">⚡</span>
+                      Crawling latest sport feeds...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <span>⏰</span>
+                      Next Update: {getNextUpdateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* HORIZONTAL TEAM FILTER PILLS */}
               {settings.teams.length > 1 && (
                 <div className={`flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none border-b border-dashed pb-3 ${
@@ -1769,12 +1887,12 @@ export default function App() {
                         }`}
                       >
                         {/* Beautiful Colored Header Bar */}
-                        <div className={`px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap ${
+                        <div className={`px-4 py-3 border-b flex items-center justify-between gap-3 ${
                           settings.darkMode 
                             ? 'bg-slate-950/60 border-slate-800/80' 
                             : 'bg-slate-50 border-slate-250/80'
                         }`}>
-                          <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                             <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
                             
                             {/* Shortened Team Name */}
@@ -1801,17 +1919,6 @@ export default function App() {
                                 </div>
                               </div>
                             )}
-                          </div>
-                          
-                          {/* "As of" timestamp aligned perfectly to the right */}
-                          <div className="flex items-center shrink-0 ml-auto">
-                            <span className={`text-[10px] font-bold tracking-tight select-none px-2 py-0.5 rounded-lg border transition-all ${
-                              settings.darkMode
-                                ? 'bg-slate-950/80 border-slate-800 text-slate-300'
-                                : 'bg-amber-100/70 border-amber-300/80 text-amber-950 font-extrabold shadow-2xs'
-                            }`}>
-                              As of {appOpenedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
                           </div>
                         </div>
 
