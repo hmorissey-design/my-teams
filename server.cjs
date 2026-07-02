@@ -629,7 +629,7 @@ function formatGameDate(dateStr) {
   }
 }
 var globalScoreboardCache = {};
-var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+var CACHE_TTL_MS = 10 * 60 * 1e3;
 async function getCachedScoreboard(key, url) {
   const cached = globalScoreboardCache[key];
   const now = Date.now();
